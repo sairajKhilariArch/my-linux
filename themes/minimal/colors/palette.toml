@@ -1,0 +1,26 @@
+[theme]
+name = "Minimal"
+id = "minimal"
+version = "1.0.0"
+description = "Clean and distraction-free interface"
+
+[colors]
+background = "#F2F4F7"
+surface = "#FFFFFF"
+surface_alt = "#E8EBF0"
+
+primary = "#50647D"
+secondary = "#919BAA"
+
+text = "#232830"
+text_muted = "#737B87"
+
+border = "#D5DAE2"
+success = "#27865B"
+warning = "#B7791F"
+error = "#C53030"
+
+[colors.states]
+active = "#50647D"
+hover = "#E1E6ED"
+selected = "#DCE3EC"

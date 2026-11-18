@@ -1,0 +1,26 @@
+[theme]
+name = "Nature"
+id = "nature"
+version = "1.0.0"
+description = "Calm organic forest interface"
+
+[colors]
+background = "#12231B"
+surface = "#1F3728"
+surface_alt = "#294735"
+
+primary = "#6EBE5A"
+secondary = "#CDAF69"
+
+text = "#EBF5E1"
+text_muted = "#A5BE9B"
+
+border = "#3D6045"
+success = "#6EBE5A"
+warning = "#E5B94F"
+error = "#E87565"
+
+[colors.states]
+active = "#6EBE5A"
+hover = "#CDAF69"
+selected = "#34583B"

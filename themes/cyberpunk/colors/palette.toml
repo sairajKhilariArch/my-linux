@@ -1,0 +1,26 @@
+[theme]
+name = "Cyberpunk"
+id = "cyberpunk"
+version = "1.0.0"
+description = "High contrast neon interface"
+
+[colors]
+background = "#0C0812"
+surface = "#1E0F23"
+surface_alt = "#30152F"
+
+primary = "#FF235A"
+secondary = "#00E6FF"
+
+text = "#FFF0FA"
+text_muted = "#B48CB4"
+
+border = "#592B50"
+success = "#39FF88"
+warning = "#FFE14A"
+error = "#FF235A"
+
+[colors.states]
+active = "#FF235A"
+hover = "#00E6FF"
+selected = "#451B48"

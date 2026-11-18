@@ -137,3 +137,5 @@ mod tests {
         assert_eq!(color.to_hex(), "#00D2FF");
     }
 }
+
+pub mod loader;
