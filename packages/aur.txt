@@ -1,0 +1,10 @@
+big-pkg-installer
+brave-bin
+freebuff
+hyprquery-git
+hyprquery-git-debug
+visual-studio-code-bin
+wlogout
+wlogout-debug
+yay
+yay-debug
