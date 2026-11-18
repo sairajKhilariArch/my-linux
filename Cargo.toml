@@ -3,5 +3,6 @@ resolver = "3"
 members = [
     "desktop/core",
     "desktop/theme-engine",
-    "desktop/components"
+    "desktop/components",
+    "desktop/config-manager"
 ]
