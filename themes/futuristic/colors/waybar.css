@@ -1,0 +1,24 @@
+/*
+ * Neon Horizon — Waybar color adapter
+ * Source of truth: palette.toml
+ */
+
+@define-color bar-bg rgba(11, 16, 32, 0.94);
+
+@define-color main-bg #0B1020;
+@define-color main-fg #E2E8F0;
+
+@define-color wb-act-bg #A78BFA;
+@define-color wb-act-fg #0B1020;
+
+@define-color wb-hvr-bg #22D3EE;
+@define-color wb-hvr-fg #0B1020;
+
+@define-color surface #151D35;
+@define-color surface-alt #1E293B;
+@define-color muted #94A3B8;
+@define-color border #334155;
+
+@define-color success #34D399;
+@define-color warning #FBBF24;
+@define-color error #FB7185;

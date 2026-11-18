@@ -1,0 +1,12 @@
+[theme]
+name = "Nature"
+description = "Calm organic forest interface"
+mode = "dark"
+
+[colors]
+background = "#12231B"
+surface = "#1F3728"
+text = "#EBF5E1"
+muted_text = "#A5BE9B"
+accent = "#6EBE5A"
+accent_secondary = "#CDAF69"

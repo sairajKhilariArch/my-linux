@@ -1,0 +1,12 @@
+[theme]
+name = "Futuristic"
+description = "Neon futuristic glass interface"
+mode = "dark"
+
+[colors]
+background = "#0B1020"
+surface = "#182238"
+text = "#EBF2FF"
+muted_text = "#91A5C3"
+accent = "#00D2FF"
+accent_secondary = "#9650FF"

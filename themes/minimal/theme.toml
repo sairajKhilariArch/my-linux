@@ -1,0 +1,12 @@
+[theme]
+name = "Minimal"
+description = "Clean and distraction-free interface"
+mode = "light"
+
+[colors]
+background = "#F2F4F7"
+surface = "#FFFFFF"
+text = "#232830"
+muted_text = "#737B87"
+accent = "#50647D"
+accent_secondary = "#919BAA"

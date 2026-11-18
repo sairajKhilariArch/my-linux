@@ -1,0 +1,12 @@
+[theme]
+name = "Cyberpunk"
+description = "High contrast neon interface"
+mode = "dark"
+
+[colors]
+background = "#0C0812"
+surface = "#1E0F23"
+text = "#FFF0FA"
+muted_text = "#B48CB4"
+accent = "#FF235A"
+accent_secondary = "#00E6FF"

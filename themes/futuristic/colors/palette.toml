@@ -1,0 +1,26 @@
+[theme]
+name = "Neon Horizon"
+id = "futuristic"
+version = "1.0.0"
+description = "Dark futuristic theme with violet and cyan accents"
+
+[colors]
+background = "#0B1020"
+surface = "#151D35"
+surface_alt = "#1E293B"
+
+primary = "#A78BFA"
+secondary = "#22D3EE"
+
+text = "#E2E8F0"
+text_muted = "#94A3B8"
+
+border = "#334155"
+success = "#34D399"
+warning = "#FBBF24"
+error = "#FB7185"
+
+[colors.states]
+active = "#A78BFA"
+hover = "#22D3EE"
+selected = "#312E81"
