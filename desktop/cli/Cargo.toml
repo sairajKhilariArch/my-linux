@@ -1,0 +1,11 @@
+[package]
+name = "my-linux-theme"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "my-linux-theme"
+path = "src/main.rs"
+
+[dependencies]
+desktop-core = { path = "../core" }

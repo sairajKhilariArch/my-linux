@@ -24,6 +24,28 @@ pub enum ConfigError {
     BackupAlreadyExists(PathBuf),
 }
 
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::Io(error) => {
+                write!(f, "I/O error: {}", error)
+            }
+            ConfigError::BackupAlreadyExists(path) => {
+                write!(f, "Backup already exists: {}", path.display())
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ConfigError::Io(error) => Some(error),
+            ConfigError::BackupAlreadyExists(_) => None,
+        }
+    }
+}
+
 impl From<io::Error> for ConfigError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
@@ -171,18 +193,16 @@ pub fn install_file(
 }
 
 /// Restores a file from its backup.
+/// Restores a file from its backup using atomic installation.
 pub fn restore_file(
     backup: impl AsRef<Path>,
     destination: impl AsRef<Path>,
 ) -> Result<(), ConfigError> {
     let backup = backup.as_ref();
-    let destination = destination.as_ref();
 
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    let content = fs::read(backup)?;
 
-    fs::copy(backup, destination)?;
+    install_content(&content, destination)?;
 
     Ok(())
 }
