@@ -31,8 +31,8 @@ mod tests {
 
     #[test]
     fn generates_cyberpunk_waybar_css() {
-        let theme = load_theme_by_name("../../themes", "cyberpunk")
-            .expect("Cyberpunk theme should load");
+        let theme =
+            load_theme_by_name("../../themes", "cyberpunk").expect("Cyberpunk theme should load");
 
         let css = render_waybar_css(&theme);
 

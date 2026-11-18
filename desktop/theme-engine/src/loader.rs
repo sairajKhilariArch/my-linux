@@ -177,7 +177,6 @@ mod tests {
     }
 }
 
-
 /// Loads a theme by its name from the themes directory.
 pub fn load_theme_by_name(
     themes_dir: impl AsRef<Path>,
@@ -204,8 +203,8 @@ mod named_loader_tests {
     #[test]
     fn loads_theme_by_name() {
         for name in ["futuristic", "minimal", "cyberpunk", "nature"] {
-            let theme = load_theme_by_name("../../themes", name)
-                .expect("Theme should load by name");
+            let theme =
+                load_theme_by_name("../../themes", name).expect("Theme should load by name");
 
             assert_eq!(theme.metadata.id, name);
         }

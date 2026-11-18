@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use config_manager::{ConfigError, backup_file, install_file};
+use config_manager::{ConfigError, backup_file, install_content};
 pub use theme_engine::loader::{LoadedTheme, ThemeLoadError};
 
 /// Loads a desktop theme by name.
@@ -26,16 +26,7 @@ pub fn install_waybar_theme(
 
     let css = crate::render::render_waybar_css(theme);
 
-    let temporary_source =
-        std::env::temp_dir().join(format!("my-linux-waybar-{}.css", std::process::id()));
-
-    std::fs::write(&temporary_source, css)?;
-
-    let result = install_file(&temporary_source, destination);
-
-    let _ = std::fs::remove_file(&temporary_source);
-
-    result
+    install_content(css.as_bytes(), destination)
 }
 
 #[cfg(test)]
