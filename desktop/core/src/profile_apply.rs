@@ -173,6 +173,41 @@ pub fn apply_profile(
 ) -> Result<ProfileReport, ProfileApplyError> {
     let root = root.as_ref();
 
+    match apply_profile_transaction(root, profile, theme, options) {
+        Ok(report) => {
+            let _ = crate::log::append_event(
+                root,
+                crate::log::Level::Info,
+                "profile",
+                &format!(
+                    "profile={} theme={} files={}",
+                    report.profile_id,
+                    report.theme_id,
+                    report.installed_files.len()
+                ),
+            );
+
+            Ok(report)
+        }
+        Err(error) => {
+            let _ = crate::log::append_event(
+                root,
+                crate::log::Level::Error,
+                "profile-failed",
+                &format!("profile={} error={error}", profile.metadata.id),
+            );
+
+            Err(error)
+        }
+    }
+}
+
+fn apply_profile_transaction(
+    root: &Path,
+    profile: &Profile,
+    theme: &LoadedTheme,
+    options: &ProfileApplyOptions,
+) -> Result<ProfileReport, ProfileApplyError> {
     profile
         .validate()
         .map_err(|error| ProfileApplyError::Profile(error.to_string()))?;

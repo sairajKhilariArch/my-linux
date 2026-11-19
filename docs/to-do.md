@@ -12,7 +12,9 @@
 **Development Branch:** main  
 **Project Type:** Independent Linux Desktop Customization Platform
 
-**Status:** Core foundation implemented; application integration and platform development in progress.
+**Status:** Phases 1–8 complete (v0.14.0). The CLI manages themes, integrations,
+wallpapers, assets and profiles with transactions, rollback and diagnostics.
+The graphical application, packaging and the extension ecosystem remain.
 
 ---
 
@@ -1002,15 +1004,30 @@ generated file, including the layout snippet.
 
 ## Phase 8 — State, monitoring and diagnostics
 
-- [ ] Active theme tracking.
-- [ ] Active profile tracking.
-- [ ] Application integration status.
-- [ ] Configuration modification detection.
-- [ ] Installation history.
-- [ ] Backup history.
-- [ ] System diagnostics.
-- [ ] `doctor` command.
-- [ ] Structured logging.
+**Current phase: Complete**
+
+- [x] Active theme tracking.
+- [x] Active profile tracking.
+- [x] Application integration status.
+- [x] Configuration modification detection.
+- [x] Installation history.
+- [x] Backup history.
+- [x] System diagnostics.
+- [x] `doctor` command.
+- [x] Structured logging.
+- [x] `current` command.
+- [x] Failure recording and last-action reporting.
+
+| Area | Implementation |
+|---|---|
+| Tracked state | `state/active-theme`, `active-profile`, `profile-previous`, `wallpaper`, `installed.tsv`, `history.log`, `profile-history.log` |
+| Event log | `state/events.jsonl`, one JSON object per line, written by the core for apply, apply-failed, restore, rollback, profile, profile-failed, wallpaper and assets |
+| Commands | `status`, `current`, `logs`, `history`, `backup list`, `doctor`, `integrations list`, `integrations status`, `rollback` |
+| Integration status | detection result plus generated-file state per integration |
+| Doctor | themes, active theme/profile, interrupted journal, integrations, file modifications, backups, wallpaper, asset settings, event summary |
+
+**Status:** Complete (v0.14.0). `doctor` exits non-zero when a check needs
+attention, and failed operations stay visible in `logs`.
 
 **Acceptance:** The application knows what is installed, what is active and what needs attention.
 

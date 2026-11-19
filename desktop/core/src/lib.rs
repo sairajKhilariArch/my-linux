@@ -15,6 +15,7 @@ pub use theme_engine::{
     render_theme_toml, validate_id,
 };
 
+pub mod log;
 pub mod profile_apply;
 pub mod render;
 pub mod transaction;

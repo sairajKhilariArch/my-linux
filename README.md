@@ -28,7 +28,8 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | First-run original backup, retained forever | Implemented |
 | `restore`, `rollback`, journal recovery | Implemented |
 | Modification detection and refusal to delete hand-edited files | Implemented |
-| `status`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
+| `status`, `current`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
+| Structured event log, failure records, last-action reporting | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
 | Browser styling | Not implemented (no stable format) |
 | Wallpaper library, preview, switching, history and restore | Implemented |
@@ -70,11 +71,13 @@ cargo build --workspace
 ./target/debug/my-linux-theme apply cyberpunk --reload
 ./target/debug/my-linux-theme integrations list
 ./target/debug/my-linux-theme status
+./target/debug/my-linux-theme current
 ./target/debug/my-linux-theme rollback
 ./target/debug/my-linux-theme restore
 
-# Recovery
+# Recovery and diagnostics
 ./target/debug/my-linux-theme history
+./target/debug/my-linux-theme logs --limit 10
 ./target/debug/my-linux-theme backup list
 ./target/debug/my-linux-theme doctor
 
@@ -158,6 +161,27 @@ qt6ct. Btop needs `color_theme = "my-linux"` in `btop.conf`.
 
 An application that is not installed simply never reads its generated file;
 detection only decides whether a reload is attempted.
+
+## State, logs and diagnostics
+
+`status` summarises the installation, `current` answers "what is active right
+now" (theme, profile, wallpaper, assets, file health, last action), and `doctor`
+checks the whole installation and exits non-zero when something needs attention.
+
+Every operation is appended to `state/events.jsonl` as one JSON object per line:
+
+```json
+{"timestamp":1763560000,"level":"info","action":"apply","detail":"theme=cyberpunk files=13 backups=0"}
+```
+
+Failures are recorded with `"level":"error"` (for example `apply-failed` or
+`profile-failed`), so a failed command can always be reconstructed later.
+`logs` prints the tail of that file, `history` shows the installation history
+and `backup list` shows every backup with its size, write time and digest.
+
+`integrations status` reports, for every integration, whether the application is
+detected and what happened to its generated file (unmodified, modified, missing
+or not installed).
 
 ## Wallpapers and assets
 
@@ -303,6 +327,7 @@ Validation rules:
     ├── active-profile
     ├── profile-previous
     ├── profile-history.log
+    ├── events.jsonl                  # structured event log
     └── assets.conf
 ```
 

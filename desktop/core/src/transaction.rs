@@ -24,6 +24,8 @@ use config_manager::{
 use desktop_integrations::Integration;
 use theme_engine::LoadedTheme;
 
+use crate::log::{Level, append_event};
+
 /// Path of the generated Waybar configuration, relative to the installation root.
 pub const WAYBAR_RELATIVE_PATH: &str = "waybar.css";
 
@@ -561,6 +563,41 @@ pub fn apply_theme_with_extra(
 ) -> Result<ApplyReport, ApplyError> {
     let root = root.as_ref();
 
+    match apply_transaction(root, theme, selected, extra) {
+        Ok(report) => {
+            let _ = append_event(
+                root,
+                Level::Info,
+                "apply",
+                &format!(
+                    "theme={} files={} backups={}",
+                    theme.metadata.id,
+                    report.installed_files.len(),
+                    report.created_backups.len()
+                ),
+            );
+
+            Ok(report)
+        }
+        Err(error) => {
+            let _ = append_event(
+                root,
+                Level::Error,
+                "apply-failed",
+                &format!("theme={} error={error}", theme.metadata.id),
+            );
+
+            Err(error)
+        }
+    }
+}
+
+fn apply_transaction(
+    root: &Path,
+    theme: &LoadedTheme,
+    selected: &[&'static dyn Integration],
+    extra: &[(String, String)],
+) -> Result<ApplyReport, ApplyError> {
     fs::create_dir_all(root)?;
     recover_interrupted(root)?;
 
@@ -648,6 +685,13 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
 
     append_history(root, "restore", "-", &relatives)?;
 
+    let _ = append_event(
+        root,
+        Level::Info,
+        "restore",
+        &format!("files={}", relatives.len()),
+    );
+
     Ok(relatives)
 }
 
@@ -707,11 +751,22 @@ pub fn rollback_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError>
 
     append_history(root, "rollback", "-", &relatives)?;
 
+    let _ = append_event(
+        root,
+        Level::Info,
+        "rollback",
+        &format!("files={}", relatives.len()),
+    );
+
     Ok(relatives)
 }
 
 /// Diagnostics for the installation root.
-pub fn diagnose(root: impl AsRef<Path>, themes_directory: impl AsRef<Path>) -> Vec<Diagnostic> {
+pub fn diagnose(
+    root: impl AsRef<Path>,
+    themes_directory: impl AsRef<Path>,
+    profiles: Option<&desktop_profiles::ProfileRegistry>,
+) -> Vec<Diagnostic> {
     let root = root.as_ref();
     let themes_directory = themes_directory.as_ref();
 
@@ -817,6 +872,93 @@ pub fn diagnose(root: impl AsRef<Path>, themes_directory: impl AsRef<Path>) -> V
             original.display().to_string()
         } else {
             "not created yet".to_string()
+        },
+        ok: true,
+    });
+
+    let active_profile = crate::read_active_profile(root);
+
+    let profile_ok = match (&active_profile, profiles) {
+        (Some(id), Some(registry)) => match registry.load(id) {
+            Ok(_) => true,
+            Err(error) => {
+                diagnostics.push(Diagnostic {
+                    label: format!("Profile {id}"),
+                    detail: error.to_string(),
+                    ok: false,
+                });
+
+                false
+            }
+        },
+        _ => true,
+    };
+
+    diagnostics.push(Diagnostic {
+        label: "Active profile".to_string(),
+        detail: active_profile.clone().unwrap_or_else(|| "none".to_string()),
+        ok: profile_ok,
+    });
+
+    let wallpaper = desktop_assets::WallpaperState::new(root).current();
+
+    diagnostics.push(Diagnostic {
+        label: "Wallpaper".to_string(),
+        detail: match &wallpaper {
+            Some(path) => path.display().to_string(),
+            None => "none recorded".to_string(),
+        },
+        ok: wallpaper
+            .as_ref()
+            .map(|path| path.is_file())
+            .unwrap_or(true),
+    });
+
+    let settings = desktop_assets::read_settings(root);
+
+    diagnostics.push(Diagnostic {
+        label: "Asset settings".to_string(),
+        detail: format!(
+            "font {} {} · icons {} · cursor {} {}",
+            settings.font.as_deref().unwrap_or("system default"),
+            settings.font_size,
+            settings.icon_theme.as_deref().unwrap_or("system default"),
+            settings.cursor_theme.as_deref().unwrap_or("system default"),
+            settings.cursor_size
+        ),
+        ok: true,
+    });
+
+    let backups = fs::read_dir(root.join("backups"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_file())
+                .count()
+        })
+        .unwrap_or(0);
+
+    diagnostics.push(Diagnostic {
+        label: "Backups".to_string(),
+        detail: format!("{backups} file(s) in {}", root.join("backups").display()),
+        ok: true,
+    });
+
+    let events = crate::log::read_events(root);
+    let failures = events
+        .iter()
+        .filter(|event| event.level == Level::Error)
+        .count();
+
+    diagnostics.push(Diagnostic {
+        label: "Event log".to_string(),
+        detail: match events.last() {
+            Some(event) => format!(
+                "{} event(s), {failures} failure(s), last `{}`",
+                events.len(),
+                event.action
+            ),
+            None => "no events recorded".to_string(),
         },
         ok: true,
     });
@@ -1067,7 +1209,7 @@ mod tests {
 
         apply_theme(&dir, &theme("cyberpunk")).unwrap();
 
-        let diagnostics = diagnose(&dir, "../../themes");
+        let diagnostics = diagnose(&dir, "../../themes", None);
 
         let failures: Vec<&Diagnostic> = diagnostics.iter().filter(|item| !item.ok).collect();
 

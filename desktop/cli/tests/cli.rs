@@ -863,6 +863,100 @@ fn applying_a_profile_applies_theme_layout_and_assets() {
 }
 
 #[test]
+fn diagnostics_report_state_and_events() {
+    let root = TempRoot::new("diagnostics");
+
+    let applied = run(
+        root.path(),
+        &[
+            "apply",
+            "cyberpunk",
+            "--integration",
+            "waybar",
+            "--integration",
+            "kitty",
+        ],
+    );
+    assert!(applied.status.success(), "{}", stderr(&applied));
+
+    let current = run(root.path(), &["current"]);
+    assert!(current.status.success(), "{}", stderr(&current));
+
+    let out = stdout(&current);
+    assert!(out.contains("Active theme:    cyberpunk"));
+    assert!(out.contains("Last action:"));
+    assert!(out.contains("apply"));
+
+    let logs = run(root.path(), &["logs"]);
+    assert!(logs.status.success(), "{}", stderr(&logs));
+
+    let out = stdout(&logs);
+    assert!(out.contains("INFO"));
+    assert!(out.contains("theme=cyberpunk"));
+
+    let integrations = run(root.path(), &["integrations", "status"]);
+    assert!(integrations.status.success(), "{}", stderr(&integrations));
+
+    let out = stdout(&integrations);
+    assert!(out.contains("waybar.css (unmodified)"));
+    assert!(out.contains("not installed (rofi/theme.rasi)"));
+
+    let doctor = run(root.path(), &["doctor"]);
+    assert!(doctor.status.success(), "{}", stderr(&doctor));
+
+    let out = stdout(&doctor);
+    assert!(out.contains("Active profile"));
+    assert!(out.contains("Wallpaper"));
+    assert!(out.contains("Event log"));
+    assert!(out.contains("1 event(s), 0 failure(s)"));
+}
+
+#[test]
+fn failed_profile_application_is_recorded() {
+    let root = TempRoot::new("failed-event");
+    let user_profiles = root.join("profiles");
+    let user_themes = root.join("themes");
+
+    fs::create_dir_all(&user_themes).unwrap();
+
+    let env = [
+        ("MY_LINUX_USER_PROFILES", user_profiles.to_str().unwrap()),
+        ("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap()),
+    ];
+
+    let create = run_env(
+        root.path(),
+        &["profile", "create", "broken", "--theme", "nature"],
+        &env,
+    );
+    assert!(create.status.success(), "{}", stderr(&create));
+
+    let set = run_env(
+        root.path(),
+        &[
+            "profile",
+            "set",
+            "broken",
+            "wallpaper",
+            "/definitely/missing/wall.png",
+        ],
+        &env,
+    );
+    assert!(set.status.success(), "{}", stderr(&set));
+
+    let apply = run_env(
+        root.path(),
+        &["profile", "apply", "broken", "--no-set"],
+        &env,
+    );
+    assert!(!apply.status.success());
+
+    let logs = run_env(root.path(), &["logs"], &env);
+    assert!(logs.status.success(), "{}", stderr(&logs));
+    assert!(stdout(&logs).contains("profile-failed"));
+}
+
+#[test]
 fn help_is_printed_without_arguments() {
     let root = TempRoot::new("help");
     let output = run(root.path(), &[]);

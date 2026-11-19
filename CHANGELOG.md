@@ -5,6 +5,33 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-11-19
+
+### Added
+
+- Structured event log: every apply, restore, rollback, profile application,
+  wallpaper change and asset change is recorded as one JSON object per line in
+  `state/events.jsonl`, including failed operations.
+- `logs [--limit <n>]` prints the event log with timestamps and levels.
+- `current` reports the active theme, active profile, wallpaper, font/icon/cursor
+  settings, installed-file health and the last recorded action.
+- `doctor` now also checks the active profile against the profile registry, the
+  recorded wallpaper, the asset settings, the backup count and the event log.
+- `backup list` shows when each backup was written in addition to its size and
+  digest.
+- 3 event-log unit tests and 2 CLI end-to-end tests for the diagnostics.
+
+### Changed
+
+- `integrations status` is now a real per-integration report: detection result
+  plus the state of the generated file (unmodified, modified, missing or not
+  installed) for every integration.
+- `status` reports how many integrations are configured and how many themes are
+  available, and shows the last recorded action.
+- `diagnose` takes an optional profile registry so it can validate the active
+  profile.
+- Phase 8 of the roadmap is complete.
+
 ## [0.13.0] - 2026-11-19
 
 ### Added

@@ -3,9 +3,9 @@ use desktop_core::{
     config_manager::install_content,
     generate_palette, integrations, read_active_theme, render_from_parts, render_theme_toml,
     transaction::{
-        WAYBAR_RELATIVE_PATH, apply_theme_with, destination, detect_modifications, diagnose,
-        format_timestamp, installed_entries, original_backup, read_history, restore_theme,
-        rollback_theme,
+        FileState, WAYBAR_RELATIVE_PATH, apply_theme_with, destination, detect_modifications,
+        diagnose, format_timestamp, installed_entries, original_backup, read_history,
+        restore_theme, rollback_theme,
     },
     validate_id,
 };
@@ -15,6 +15,7 @@ use desktop_core::assets::{
     discover, extract_palette, hyprland_assets_file, install_asset, installed_assets,
     read_settings, remove_asset, render_preview, save_theme, set_wallpaper, write_settings,
 };
+use desktop_core::log::{Level, append_event, last_event, read_events};
 use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::{read_active_profile, read_previous_profile};
@@ -98,6 +99,10 @@ Profile commands:
                            Apply a complete desktop profile
   profile restore          Apply the previously active profile
   profile current          Show the active and previous profiles
+
+State commands:
+  current                  Show the active theme, profile, wallpaper and assets
+  logs [--limit <n>]       Show the structured event log
 
 Recovery commands:
   backup list              List configuration backups
@@ -547,7 +552,151 @@ fn command_status(root: &Path) {
         }
     }
 
-    println!("Integrations:     Waybar (CSS)");
+    println!(
+        "Integrations:     {} supported, {} configured",
+        integrations::all().len(),
+        installed.len()
+    );
+
+    let discovery = registry().list();
+    let user_themes = discovery
+        .themes
+        .iter()
+        .filter(|theme| theme.source == desktop_core::ThemeSource::User)
+        .count();
+
+    println!(
+        "Themes:           {} available ({} user, {} built-in)",
+        discovery.themes.len(),
+        user_themes,
+        discovery.themes.len() - user_themes
+    );
+
+    if let Some(event) = last_event(root) {
+        println!(
+            "Last action:      {} {} ({})",
+            format_timestamp(event.timestamp),
+            event.action,
+            event.detail
+        );
+    }
+}
+
+fn command_current(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    println!("My Linux current state");
+    println!("Root:            {}", root.display());
+    println!(
+        "Active theme:    {}",
+        read_active_theme(root).unwrap_or_else(|| "none".to_string())
+    );
+    println!(
+        "Active profile:  {}",
+        read_active_profile(root).unwrap_or_else(|| "none".to_string())
+    );
+
+    match WallpaperState::new(root).current() {
+        Some(path) => println!(
+            "Wallpaper:       {} ({})",
+            path.display(),
+            if path.is_file() { "present" } else { "missing" }
+        ),
+        None => println!("Wallpaper:       none recorded"),
+    }
+
+    let settings = read_settings(root);
+
+    println!(
+        "Font:            {} {}",
+        settings.font.as_deref().unwrap_or("system default"),
+        settings.font_size
+    );
+    println!(
+        "Icon theme:      {}",
+        settings.icon_theme.as_deref().unwrap_or("system default")
+    );
+    println!(
+        "Cursor theme:    {} ({})",
+        settings.cursor_theme.as_deref().unwrap_or("system default"),
+        settings.cursor_size
+    );
+
+    let modifications = detect_modifications(root);
+    let attention = modifications
+        .iter()
+        .filter(|modification| modification.state != FileState::Unchanged)
+        .count();
+
+    println!(
+        "Installed files: {} ({} need attention)",
+        modifications.len(),
+        attention
+    );
+
+    match last_event(root) {
+        Some(event) => println!(
+            "Last action:     {} {} ({})",
+            format_timestamp(event.timestamp),
+            event.action,
+            event.detail
+        ),
+        None => println!("Last action:     none recorded"),
+    }
+
+    Ok(())
+}
+
+fn command_logs(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let limit = value_of(rest, "--limit")
+        .map(|value| value.parse().unwrap_or(20))
+        .unwrap_or(20);
+    let events = read_events(root);
+
+    if events.is_empty() {
+        println!("No events recorded for {}.", root.display());
+        return Ok(());
+    }
+
+    let start = events.len().saturating_sub(limit);
+
+    for event in &events[start..] {
+        println!(
+            "{}  {:<5} {:<14} {}",
+            format_timestamp(event.timestamp),
+            event.level.label().to_uppercase(),
+            event.action,
+            event.detail
+        );
+    }
+
+    Ok(())
+}
+
+fn command_integrations_status(root: &Path) {
+    let modifications = detect_modifications(root);
+
+    println!("Integration status:");
+
+    for status in integrations::status() {
+        let detected = match &status.detected {
+            Some(path) => format!("yes ({})", path.display()),
+            None => format!("no ({})", status.programs.join(", ")),
+        };
+
+        let configuration = match modifications
+            .iter()
+            .find(|modification| modification.relative_path == status.destination)
+        {
+            Some(modification) => {
+                format!("{} ({})", status.destination, modification.state.label())
+            }
+            None => format!("not installed ({})", status.destination),
+        };
+
+        println!(
+            "  - {:<10} detected: {:<34} config: {}",
+            status.id, detected, configuration
+        );
+    }
 }
 
 fn command_backup_list(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -587,7 +736,20 @@ fn command_backup_list(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let digest = desktop_core::config_manager::digest_file(&entry)
             .unwrap_or_else(|_| "unreadable".to_string());
 
-        println!("  {:<28} {:>6} bytes  digest {}", name, size, digest);
+        let written = fs::metadata(&entry)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0);
+
+        println!(
+            "  {:<28} {:>6} bytes  {}  digest {}",
+            name,
+            size,
+            format_timestamp(written),
+            digest
+        );
     }
 
     Ok(())
@@ -622,7 +784,7 @@ fn command_history(root: &Path) {
 }
 
 fn command_doctor(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let diagnostics = diagnose(root, builtin_themes_dir());
+    let diagnostics = diagnose(root, builtin_themes_dir(), Some(&profile_registry()));
     let mut problems = 0;
 
     println!("My Linux doctor");
@@ -789,6 +951,12 @@ fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::er
             let installed = library.install(&source)?;
 
             WallpaperState::new(root).set(&installed.path, "apply")?;
+            let _ = append_event(
+                root,
+                Level::Info,
+                "wallpaper",
+                &format!("path={}", installed.path.display()),
+            );
 
             println!("Wallpaper:  {}", installed.path.display());
 
@@ -850,6 +1018,12 @@ fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::er
             }
 
             state.set(&previous, "restore")?;
+            let _ = append_event(
+                root,
+                Level::Info,
+                "wallpaper-restore",
+                &format!("path={}", previous.display()),
+            );
 
             println!("Wallpaper restored: {}", previous.display());
             apply_wallpaper_to_desktop(&previous, true);
@@ -1060,6 +1234,19 @@ fn command_assets(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error
             }
 
             write_settings(root, &settings)?;
+            let _ = append_event(
+                root,
+                Level::Info,
+                "assets",
+                &format!(
+                    "font={} size={} icons={} cursor={} {}",
+                    settings.font.as_deref().unwrap_or("default"),
+                    settings.font_size,
+                    settings.icon_theme.as_deref().unwrap_or("default"),
+                    settings.cursor_theme.as_deref().unwrap_or("default"),
+                    settings.cursor_size
+                ),
+            );
 
             println!("Asset settings written.");
             println!("Snippet: {}", hyprland_assets_file(root).display());
@@ -1799,12 +1986,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         "status" => command_status(&root),
 
+        "current" => command_current(&root)?,
+
+        "logs" => command_logs(&root, rest)?,
+
         "integrations" => {
             let subcommand = rest.first().map(String::as_str).unwrap_or("list");
 
             match subcommand {
                 "list" => command_integrations_list(),
-                "status" => command_status(&root),
+                "status" => command_integrations_status(&root),
                 other => {
                     return Err(format!("Unknown integrations command: {other}\n\n{HELP}").into());
                 }
