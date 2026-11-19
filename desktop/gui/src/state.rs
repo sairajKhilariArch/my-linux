@@ -25,6 +25,7 @@ use desktop_core::{
     read_active_profile, read_active_theme, read_previous_profile, render_theme_parts,
     render_theme_toml, validate_id,
 };
+use desktop_repository as repository;
 
 /// Directory of the built-in themes, in an installation or a source tree.
 pub fn builtin_themes_dir() -> PathBuf {
@@ -181,6 +182,7 @@ pub struct GuiState {
     pub integrations: Vec<IntegrationRow>,
     pub extensions_registry: ExtensionRegistry,
     pub extensions: Vec<ExtensionRow>,
+    pub repository: Option<repository::index::RepositoryIndex>,
     pub wallpapers: Vec<WallpaperEntry>,
     pub active_theme: Option<String>,
     pub active_profile: Option<String>,
@@ -232,6 +234,7 @@ impl GuiState {
                 user_extensions_dir(),
             ),
             extensions: Vec::new(),
+            repository: None,
             wallpapers: Vec::new(),
             active_theme: None,
             active_profile: None,
@@ -653,6 +656,60 @@ impl GuiState {
         ))
     }
 
+    /// Loads (and fetches) a repository index.
+    pub fn load_repository(&mut self, location: &str) -> Result<String, String> {
+        let location = location.trim();
+
+        if location.is_empty() {
+            return Err("Enter a repository path or git URL".to_string());
+        }
+
+        let index = repository::load(location, repository::cache_dir())
+            .map_err(|error| error.to_string())?;
+        let message = format!(
+            "Loaded {} with {} package(s) from {}.",
+            index.name,
+            index.packages.len(),
+            index.path.display()
+        );
+
+        self.repository = Some(index);
+
+        Ok(message)
+    }
+
+    /// Installs one package from the loaded repository.
+    pub fn install_repository_package(
+        &mut self,
+        id: &str,
+        replace: bool,
+    ) -> Result<String, String> {
+        let index = self
+            .repository
+            .clone()
+            .ok_or("Load a repository index first")?;
+        let package = index
+            .find(id)
+            .ok_or_else(|| format!("Unknown package `{id}`"))?
+            .clone();
+        let path = repository::install(
+            &package,
+            &self.user_themes,
+            &self.extensions_registry,
+            replace,
+        )
+        .map_err(|error| error.to_string())?;
+
+        self.refresh();
+
+        Ok(format!(
+            "Installed {} `{}` at {}.",
+            package.kind.label(),
+            package.id,
+            path.display()
+        ))
+    }
+
     /// Renders one extension with a theme, for the live preview.
     pub fn render_extension(&self, id: &str, theme_id: &str) -> Result<String, String> {
         let theme = self.theme(theme_id)?;
@@ -739,7 +796,20 @@ impl GuiState {
 
     /// Runs every installation check.
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
-        diagnose(&self.root, &self.builtin_themes, Some(&self.profiles))
+        let mut diagnostics = diagnose(&self.root, &self.builtin_themes, Some(&self.profiles));
+
+        diagnostics.extend(
+            self.extensions_registry
+                .diagnose(&self.root)
+                .into_iter()
+                .map(|diagnostic| Diagnostic {
+                    label: diagnostic.label,
+                    detail: diagnostic.detail,
+                    ok: diagnostic.ok,
+                }),
+        );
+
+        diagnostics
     }
 
     /// Location of the generated Hyprland asset snippet.
@@ -943,6 +1013,49 @@ mod tests {
 
         state.remove_theme("my-custom").unwrap();
         assert!(!state.themes.iter().any(|theme| theme.id == "my-custom"));
+    }
+
+    #[test]
+    fn loads_a_repository_and_installs_a_package() {
+        let mut state = state_for("repository");
+        let index = format!(
+            "{}/../../packages/community-index.toml",
+            env!("CARGO_MANIFEST_DIR")
+        );
+
+        let message = state.load_repository(&index).unwrap();
+
+        assert!(message.contains("package(s)"));
+        assert_eq!(state.repository.as_ref().unwrap().packages.len(), 2);
+        assert!(
+            state
+                .repository
+                .as_ref()
+                .unwrap()
+                .find("futuristic")
+                .is_some()
+        );
+
+        assert!(state.repository.as_ref().unwrap().find("nope").is_none());
+
+        // The example index points at the repository's built-in theme.
+        let message = state
+            .install_repository_package("futuristic", false)
+            .unwrap();
+
+        assert!(message.contains("Installed theme"));
+        assert!(
+            state
+                .install_repository_package("futuristic", false)
+                .is_err()
+        );
+        assert!(state.install_repository_package("futuristic", true).is_ok());
+        assert!(
+            state
+                .themes
+                .iter()
+                .any(|theme| theme.id == "futuristic" && theme.source == "user")
+        );
     }
 
     #[test]

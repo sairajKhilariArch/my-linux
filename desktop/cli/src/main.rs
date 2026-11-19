@@ -1291,8 +1291,19 @@ fn command_history(root: &Path) {
 }
 
 fn command_doctor(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let diagnostics = diagnose(root, builtin_themes_dir(), Some(&profile_registry()));
+    let mut diagnostics = diagnose(root, builtin_themes_dir(), Some(&profile_registry()));
     let mut problems = 0;
+
+    diagnostics.extend(
+        extension_registry()
+            .diagnose(root)
+            .into_iter()
+            .map(|diagnostic| desktop_core::transaction::Diagnostic {
+                label: diagnostic.label,
+                detail: diagnostic.detail,
+                ok: diagnostic.ok,
+            }),
+    );
 
     println!("My Linux doctor");
     println!("Root: {}", root.display());

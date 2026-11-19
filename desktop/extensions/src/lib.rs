@@ -14,8 +14,8 @@ pub mod template;
 
 pub use manifest::{Extension, ExtensionFormat, ExtensionMetadata, SCHEMA_VERSION};
 pub use registry::{
-    BrokenExtension, ExtensionDiscovery, ExtensionError, ExtensionRegistry, ExtensionSource,
-    ExtensionSummary, GeneratedExtension, Settings, user_extensions_dir,
+    BrokenExtension, ExtensionDiagnostic, ExtensionDiscovery, ExtensionError, ExtensionRegistry,
+    ExtensionSource, ExtensionSummary, GeneratedExtension, Settings, user_extensions_dir,
 };
 pub use template::render;
 

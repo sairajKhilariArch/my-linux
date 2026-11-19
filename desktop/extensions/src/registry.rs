@@ -96,6 +96,14 @@ pub struct ExtensionDiscovery {
     pub broken: Vec<BrokenExtension>,
 }
 
+/// One extension health check, rendered by `doctor`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionDiagnostic {
+    pub label: String,
+    pub detail: String,
+    pub ok: bool,
+}
+
 /// The file produced by rendering one extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneratedExtension {
@@ -315,6 +323,61 @@ impl ExtensionRegistry {
             .sort_by(|left, right| left.id.cmp(&right.id));
 
         discovery
+    }
+
+    /// Health checks for the doctor command: broken manifests, enabled
+    /// extensions that no longer load, and whether their file was applied.
+    pub fn diagnose(&self, root: impl AsRef<Path>) -> Vec<ExtensionDiagnostic> {
+        let root = root.as_ref();
+        let discovery = self.list();
+        let enabled = self.enabled().unwrap_or_default();
+        let mut diagnostics = vec![ExtensionDiagnostic {
+            label: "Extensions".to_string(),
+            detail: format!(
+                "{} available, {} enabled ({} user, {} built-in roots)",
+                discovery.extensions.len(),
+                enabled.len(),
+                self.user.display(),
+                self.builtin.display()
+            ),
+            ok: discovery.broken.is_empty(),
+        }];
+
+        for broken in &discovery.broken {
+            diagnostics.push(ExtensionDiagnostic {
+                label: format!("Extension {}", broken.path.display()),
+                detail: broken.error.clone(),
+                ok: false,
+            });
+        }
+
+        for id in enabled {
+            match self.load(&id) {
+                Ok(extension) => {
+                    let generated = root.join(&extension.metadata.destination);
+
+                    diagnostics.push(ExtensionDiagnostic {
+                        label: format!("Enabled extension {id}"),
+                        detail: if generated.is_file() {
+                            format!("applied at {}", generated.display())
+                        } else {
+                            format!(
+                                "enabled, not applied yet (writes {})",
+                                extension.metadata.destination
+                            )
+                        },
+                        ok: true,
+                    });
+                }
+                Err(error) => diagnostics.push(ExtensionDiagnostic {
+                    label: format!("Enabled extension {id}"),
+                    detail: error.to_string(),
+                    ok: false,
+                }),
+            }
+        }
+
+        diagnostics
     }
 
     /// Renders one extension against `theme` and validates the output.
@@ -782,6 +845,48 @@ mod tests {
             Err(ExtensionError::Builtin(id)) => assert_eq!(id, "demo"),
             other => panic!("built-in extensions must be protected, got {other:?}"),
         }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn diagnoses_enabled_broken_and_applied_extensions() {
+        let root = scratch("diagnose");
+        let builtin = root.join("builtin");
+        let install = root.join("install");
+
+        write_extension(&builtin, "demo", "demo/one.conf", "#111111");
+
+        let registry = ExtensionRegistry::new(&builtin, root.join("user"));
+
+        registry.enable("demo").unwrap();
+
+        let diagnostics = registry.diagnose(&install);
+
+        assert!(diagnostics.iter().all(|diagnostic| diagnostic.ok));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.detail.contains("not applied yet"))
+        );
+
+        fs::create_dir_all(install.join("demo")).unwrap();
+        fs::write(install.join("demo/one.conf"), "color = #111111\n").unwrap();
+
+        let diagnostics = registry.diagnose(&install);
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.detail.contains("applied at"))
+        );
+
+        fs::create_dir_all(builtin.join("bad")).unwrap();
+        fs::write(builtin.join("bad").join(MANIFEST_FILE), "not toml").unwrap();
+
+        let diagnostics = registry.diagnose(&install);
+
+        assert!(diagnostics.iter().any(|diagnostic| !diagnostic.ok));
 
         fs::remove_dir_all(root).unwrap();
     }

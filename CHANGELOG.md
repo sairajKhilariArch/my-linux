@@ -5,6 +5,26 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-11-19
+
+### Added
+
+- Extension health checks: `ExtensionRegistry::diagnose` reports broken
+  manifests, enabled extensions that no longer load, and whether their generated
+  file was applied. `my-linux-theme doctor` and the GUI recovery screen include
+  these checks, and `doctor` still exits non-zero when a check needs attention.
+- GUI Repository screen: index location field (prefilled from
+  `MY_LINUX_REPOSITORY`), load/refresh, package table with kind, version,
+  description and availability, install action and an optional replace-existing
+  toggle. Installation goes through the same validated repository code as the
+  CLI.
+- A repository unit test for `diagnose` and a GUI state test that loads
+  `packages/community-index.toml` and installs its theme package.
+
+### Changed
+
+- Workspace version 0.21.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.20.0] - 2026-11-19
 
 ### Added

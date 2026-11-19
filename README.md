@@ -31,13 +31,14 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Modification detection and refusal to delete hand-edited files | Implemented |
 | `status`, `current`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
 | Structured event log, failure records, last-action reporting | Implemented |
+| Extension and repository health in `doctor` and the GUI | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
 | Browser styling | Not implemented (no stable format) |
 | Wallpaper library, preview, switching, history and restore | Implemented |
 | Palette extraction from a PNG/JPEG wallpaper | Implemented |
 | Font, icon-theme and cursor-theme discovery and settings | Implemented |
 | Desktop profiles, presets, per-profile wallpapers, profile switching | Implemented |
-| Native GUI: dashboard, gallery, editor, applications, wallpapers, profiles, recovery | Implemented |
+| Native GUI: dashboard, gallery, editor, applications, wallpapers, profiles, repository, recovery | Implemented |
 | Installation, upgrade, uninstall and verification | Implemented |
 | User extensions: manifest, template, discovery, import/export, enable state | Implemented |
 | Community repository: index, search, install of themes and extensions | Implemented |

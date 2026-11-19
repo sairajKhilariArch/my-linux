@@ -26,6 +26,7 @@ enum Tab {
     Applications,
     Wallpapers,
     Profiles,
+    Repository,
     Recovery,
 }
 
@@ -170,6 +171,8 @@ pub struct MyLinuxApp {
     new_profile_id: String,
     new_profile_name: String,
     new_profile_theme: String,
+    repository_location: String,
+    replace_packages: bool,
     asset_font: String,
     asset_font_size: u32,
     asset_icon: String,
@@ -214,6 +217,8 @@ impl MyLinuxApp {
             new_profile_id: String::new(),
             new_profile_name: String::new(),
             new_profile_theme,
+            repository_location: std::env::var("MY_LINUX_REPOSITORY").unwrap_or_default(),
+            replace_packages: false,
             asset_font: String::new(),
             asset_font_size: 11,
             asset_icon: String::new(),
@@ -336,6 +341,7 @@ impl MyLinuxApp {
                 (Tab::Applications, "Applications"),
                 (Tab::Wallpapers, "Wallpapers"),
                 (Tab::Profiles, "Profiles"),
+                (Tab::Repository, "Repository"),
                 (Tab::Recovery, "Recovery"),
             ] {
                 if ui.selectable_label(self.tab == tab, label).clicked() {
@@ -1425,6 +1431,95 @@ impl MyLinuxApp {
         }
     }
 
+    fn repository(&mut self, ui: &mut Ui) {
+        ui.heading("Community repository");
+        ui.label(
+            RichText::new(
+                "A repository is a TOML index of themes and extensions. Local paths, file:// \
+                 URLs and git URLs are accepted; remote indexes are cached and updated with git.",
+            )
+            .weak(),
+        );
+
+        ui.add_space(6.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Index");
+            ui.text_edit_singleline(&mut self.repository_location);
+
+            if ui.button("Load").clicked() {
+                let location = self.repository_location.clone();
+                let result = self.state.load_repository(&location);
+                self.outcome(result);
+            }
+
+            ui.checkbox(&mut self.replace_packages, "Replace existing");
+        });
+
+        if let Some(index) = self.state.repository.clone() {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!(
+                    "{} — {} package(s) — {}",
+                    index.name,
+                    index.packages.len(),
+                    index.path.display()
+                ))
+                .small()
+                .weak(),
+            );
+
+            if !index.description.is_empty() {
+                ui.label(RichText::new(&index.description).small().weak());
+            }
+
+            ui.add_space(6.0);
+
+            let mut install: Option<String> = None;
+
+            egui::Grid::new("repository-packages")
+                .num_columns(5)
+                .striped(true)
+                .spacing([16.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label(RichText::new("Package").strong());
+                    ui.label(RichText::new("Kind").strong());
+                    ui.label(RichText::new("Version").strong());
+                    ui.label(RichText::new("Description").strong());
+                    ui.label(RichText::new("Action").strong());
+                    ui.end_row();
+
+                    for package in &index.packages {
+                        ui.label(&package.name);
+                        ui.label(RichText::new(package.kind.label()).small());
+                        ui.label(RichText::new(&package.version).small());
+                        ui.label(RichText::new(&package.description).small());
+
+                        if package.source.exists() {
+                            if ui.button("Install").clicked() {
+                                install = Some(package.id.clone());
+                            }
+                        } else {
+                            ui.label(
+                                RichText::new(format!("missing: {}", package.raw_source))
+                                    .small()
+                                    .color(BAD),
+                            );
+                        }
+
+                        ui.end_row();
+                    }
+                });
+
+            if let Some(id) = install {
+                let result = self
+                    .state
+                    .install_repository_package(&id, self.replace_packages);
+                self.outcome(result);
+            }
+        }
+    }
+
     fn recovery(&mut self, ui: &mut Ui) {
         ui.heading("Recovery and diagnostics");
 
@@ -1612,6 +1707,7 @@ impl eframe::App for MyLinuxApp {
                         Tab::Applications => self.applications(ui),
                         Tab::Wallpapers => self.wallpapers(ui),
                         Tab::Profiles => self.profiles(ui),
+                        Tab::Repository => self.repository(ui),
                         Tab::Recovery => self.recovery(ui),
                     }
 
