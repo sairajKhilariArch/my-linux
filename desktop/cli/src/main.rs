@@ -1,11 +1,9 @@
 use desktop_core::{
     Color, Registry, ThemeMetadata,
     config_manager::install_content,
-    generate_palette, read_active_theme,
-    render::render_waybar_css,
-    render_from_parts, render_theme_toml,
+    generate_palette, integrations, read_active_theme, render_from_parts, render_theme_toml,
     transaction::{
-        WAYBAR_RELATIVE_PATH, apply_theme, destination, detect_modifications, diagnose,
+        WAYBAR_RELATIVE_PATH, apply_theme_with, destination, detect_modifications, diagnose,
         format_timestamp, installed_entries, original_backup, read_history, restore_theme,
         rollback_theme,
     },
@@ -26,7 +24,8 @@ Theme commands:
   list                     List every discovered theme
   info <theme>             Show theme metadata and the full palette
   preview <theme>          Preview theme colours with terminal swatches
-  render <theme>           Print the generated Waybar CSS
+  render <theme> [--integration <id>]
+                           Print a generated application configuration
   create <id> [--from <theme> | --base <#RRGGBB>]
                            Create a user theme
   import <path> [--as <id>]
@@ -35,10 +34,15 @@ Theme commands:
   remove <id>              Remove a user theme
 
 Desktop commands:
-  apply <theme>            Apply a theme as a single transaction
+  apply <theme> [--integration <id>]... [--reload]
+                           Apply a theme as a single transaction
   restore                  Restore the original configuration
   rollback                 Undo the most recent apply
   status                   Show the active theme and installation state
+
+Integration commands:
+  integrations list        List supported desktop integrations
+  integrations status      Show which integrations are installed
 
 Recovery commands:
   backup list              List configuration backups
@@ -372,13 +376,39 @@ fn command_remove(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error
 }
 
 fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let name = rest.first().ok_or("Usage: my-linux-theme apply <theme>")?;
+    let name = rest
+        .first()
+        .ok_or("Usage: my-linux-theme apply <theme> [--integration <id>]... [--reload]")?;
 
+    let mut selected_ids: Vec<String> = Vec::new();
+    let mut reload = false;
+    let mut index = 1;
+
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--integration" => {
+                selected_ids.push(
+                    rest.get(index + 1)
+                        .ok_or("--integration requires an integration id")?
+                        .clone(),
+                );
+                index += 2;
+            }
+            "--reload" => {
+                reload = true;
+                index += 1;
+            }
+            other => return Err(format!("Unknown option: {other}").into()),
+        }
+    }
+
+    let selected = integrations::select(&selected_ids)?;
     let theme = registry().load(name)?;
-    let path = destination(root, WAYBAR_RELATIVE_PATH);
-    let had_previous_configuration = path.exists();
+    let had_previous_configuration = selected
+        .iter()
+        .any(|integration| destination(root, integration.relative_path()).exists());
 
-    let report = apply_theme(root, &theme)?;
+    let report = apply_theme_with(root, &theme, &selected)?;
 
     println!("Theme applied successfully.");
     println!("Theme:     {} ({})", theme.metadata.name, report.theme_id);
@@ -401,7 +431,36 @@ fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error:
         println!("Created:   {backup}");
     }
 
+    if reload {
+        for integration in &selected {
+            match integrations::reload(*integration) {
+                Ok(commands) if commands.is_empty() => {}
+                Ok(commands) => {
+                    for command in commands {
+                        println!("Reloaded:  {} ({command})", integration.id());
+                    }
+                }
+                Err(error) => println!("Warning:   {} did not reload: {error}", integration.id()),
+            }
+        }
+    } else {
+        println!("Reload:    skipped (pass --reload to reload running applications)");
+    }
+
     Ok(())
+}
+
+fn command_integrations_list() {
+    println!("Supported integrations:");
+
+    for integration in integrations::all() {
+        println!(
+            "  - {:<10} {:<24} {}",
+            integration.id(),
+            integration.name(),
+            integration.relative_path()
+        );
+    }
 }
 
 fn command_status(root: &Path) {
@@ -599,11 +658,34 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "render" => {
-            let name = rest.first().ok_or("Usage: my-linux-theme render <theme>")?;
+            let name = rest
+                .first()
+                .ok_or("Usage: my-linux-theme render <theme> [--integration <id>]")?;
 
             let theme = registry().load(name)?;
 
-            println!("{}", render_waybar_css(&theme));
+            let integration_id = match rest.get(1) {
+                None => "waybar",
+                Some(option) if option == "--integration" => rest
+                    .get(2)
+                    .map(String::as_str)
+                    .ok_or("--integration requires an integration id")?,
+                Some(other) => return Err(format!("Unknown option: {other}").into()),
+            };
+
+            let integration = integrations::find(integration_id)
+                .ok_or_else(|| format!("Unknown integration `{integration_id}`"))?;
+
+            let content = integration.render(&theme);
+
+            integration.validate(&content).map_err(|error| {
+                format!(
+                    "Generated {} configuration is invalid: {error}",
+                    integration.id()
+                )
+            })?;
+
+            println!("{content}");
         }
 
         "preview" => {
@@ -655,10 +737,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Restored: {}", destination(&root, file).display());
             }
 
-            println!(
-                "Backup kept at: {}",
-                original_backup(&root, WAYBAR_RELATIVE_PATH).display()
-            );
+            let backup = original_backup(&root, WAYBAR_RELATIVE_PATH);
+
+            if backup.exists() {
+                println!("Backup kept at: {}", backup.display());
+            } else {
+                println!("Backup:        none (no original configuration was replaced)");
+            }
         }
 
         "rollback" => {
@@ -674,6 +759,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "status" => command_status(&root),
+
+        "integrations" => {
+            let subcommand = rest.first().map(String::as_str).unwrap_or("list");
+
+            match subcommand {
+                "list" => command_integrations_list(),
+                "status" => command_status(&root),
+                other => {
+                    return Err(format!("Unknown integrations command: {other}\n\n{HELP}").into());
+                }
+            }
+        }
 
         "backup" => {
             let subcommand = rest.first().map(String::as_str).unwrap_or("list");

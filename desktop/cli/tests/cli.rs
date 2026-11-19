@@ -199,7 +199,7 @@ fn restore_without_a_backup_fails_clearly() {
     let output = run(root.path(), &["restore"]);
 
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("No backup found"));
+    assert!(stderr(&output).contains("Nothing to restore"));
     assert!(!root.join("waybar.css").exists());
 }
 
@@ -411,7 +411,7 @@ fn rollback_without_a_previous_state_fails() {
     let output = run(root.path(), &["rollback"]);
 
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("No backup found"));
+    assert!(stderr(&output).contains("Nothing to roll back"));
 }
 
 #[test]
@@ -489,6 +489,109 @@ fn status_reports_a_modified_configuration() {
     root.write("waybar.css", "/* hand edited */");
 
     assert!(stdout(&run(root.path(), &["status"])).contains("modified by you"));
+}
+
+#[test]
+fn integrations_list_shows_the_core_applications() {
+    let root = TempRoot::new("integrations");
+    let output = run(root.path(), &["integrations", "list"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    for integration in ["waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock"] {
+        assert!(out.contains(integration), "{integration} should be listed");
+    }
+}
+
+#[test]
+fn apply_installs_every_integration_configuration() {
+    let root = TempRoot::new("apply-all");
+
+    let output = run(root.path(), &["apply", "cyberpunk"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    assert!(
+        root.read("waybar.css")
+            .contains("@define-color main-bg #0C0812;")
+    );
+    assert!(root.read("rofi/theme.rasi").contains("element selected {"));
+    assert!(
+        root.read("hyprland/my-linux.conf")
+            .contains("col.active_border")
+    );
+    assert!(root.read("kitty/my-linux.conf").contains("color15"));
+    assert!(root.read("dunst/dunstrc").contains("[urgency_critical]"));
+    assert!(
+        root.read("hyprlock/hyprlock.conf")
+            .contains("input-field {")
+    );
+}
+
+#[test]
+fn apply_can_target_a_single_integration() {
+    let root = TempRoot::new("apply-one");
+
+    let output = run(root.path(), &["apply", "nature", "--integration", "kitty"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(root.read("kitty/my-linux.conf").contains("#6EBE5A"));
+    assert!(!root.join("waybar.css").exists());
+    assert!(!root.join("rofi/theme.rasi").exists());
+}
+
+#[test]
+fn render_can_target_a_specific_integration() {
+    let root = TempRoot::new("render-integration");
+
+    let rasi = run(
+        root.path(),
+        &["render", "cyberpunk", "--integration", "rofi"],
+    );
+    assert!(rasi.status.success(), "{}", stderr(&rasi));
+    assert!(stdout(&rasi).contains("element selected {"));
+
+    let waybar = run(root.path(), &["render", "cyberpunk"]);
+    assert!(stdout(&waybar).contains("@define-color"));
+
+    let unknown = run(
+        root.path(),
+        &["render", "cyberpunk", "--integration", "nope"],
+    );
+    assert!(!unknown.status.success());
+    assert!(stderr(&unknown).contains("Unknown integration"));
+}
+
+#[test]
+fn restore_removes_generated_files_that_had_no_original() {
+    let root = TempRoot::new("restore-generated");
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+    assert!(root.join("rofi/theme.rasi").is_file());
+
+    let output = run(root.path(), &["restore"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    assert!(!root.join("waybar.css").exists());
+    assert!(!root.join("rofi/theme.rasi").exists());
+    assert!(!root.join("kitty/my-linux.conf").exists());
+}
+
+#[test]
+fn apply_reports_reload_state_and_rejects_unknown_integrations() {
+    let root = TempRoot::new("apply-reload");
+
+    let output = run(root.path(), &["apply", "minimal"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains("Reload:    skipped"));
+
+    let unknown = run(
+        root.path(),
+        &["apply", "minimal", "--integration", "unknown-app"],
+    );
+    assert!(!unknown.status.success());
+    assert!(stderr(&unknown).contains("Unknown integration"));
 }
 
 #[test]

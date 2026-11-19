@@ -1,38 +1,36 @@
 # My Linux
 
-My Linux is an independent Arch Linux desktop customisation platform. A single
-TOML palette is the source of truth; the Rust core renders it into the
-configuration formats that each desktop component understands.
+My Linux is an independent Arch Linux desktop customisation platform. One TOML
+palette is the source of truth; the Rust core renders it into the configuration
+format of every supported desktop application.
 
 The project does not depend on HyDE or any other rice framework.
 
-**Status:** Phases 1–3 are complete for the Waybar integration: theme engine,
-configuration management and theme management (discovery, creation, import,
-export, removal, inheritance). The CLI installs into an isolated *installation
-root* that you choose, so it never touches your real desktop configuration yet.
-Real desktop paths, the remaining integrations, profiles, wallpapers and the GUI
-are not implemented — see [`docs/to-do.md`](docs/to-do.md) for the roadmap and
-[`CHANGELOG.md`](CHANGELOG.md) for release history.
+**Status:** Phases 1–4 are complete: foundation, production configuration
+management, the dynamic theme engine, and the core Hyprland integrations
+(Waybar, Rofi, Hyprland, Kitty, notifications, lock screen). The CLI writes into
+an isolated *installation root* that you choose, so it never touches your live
+`~/.config` yet. Profiles, wallpapers, fonts/icons, the GUI and packaging are not
+implemented — see [`docs/to-do.md`](docs/to-do.md) and
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## What works today
 
 | Area | State |
 |---|---|
-| Theme loading, validation and discovery from any theme root | Implemented |
-| Theme schema versioning and metadata validation | Implemented |
-| Theme inheritance (`extends = "parent"`) | Implemented |
-| Palette generation from a seed colour | Implemented |
-| `create`, `import`, `export`, `remove` for user themes | Implemented |
-| Palette preview and theme details (`preview`, `info`, `render`) | Implemented |
-| Waybar CSS renderer | Implemented |
-| Transactional apply with backup, verification and rollback | Implemented |
+| Theme discovery, validation, schema versioning, inheritance | Implemented |
+| Theme creation, import, export, removal, palette generation | Implemented |
+| Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock rendering | Implemented |
+| Generated-output validation per application | Implemented |
+| Application detection and per-application reload commands | Implemented |
+| Multi-file transactional apply with backup and rollback | Implemented |
 | First-run original backup, retained forever | Implemented |
 | `restore`, `rollback`, journal recovery | Implemented |
-| Modification detection (unmodified / hand-edited / missing) | Implemented |
-| `status`, `history`, `backup list`, `doctor` | Implemented |
+| Modification detection and refusal to delete hand-edited files | Implemented |
+| `status`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
-| Rofi, Hyprland, Kitty, notifications, lockscreen integrations | Not implemented |
-| Profiles, wallpapers, fonts, icons, GUI, packaging | Not implemented |
+| GTK, Qt, Zsh, editor, file manager integrations | Not implemented |
+| Profiles, wallpapers, fonts/icons/cursors, GUI, packaging | Not implemented |
 
 ## Build and verify
 
@@ -43,41 +41,75 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The suite contains unit tests for every crate plus end-to-end CLI tests in
-`desktop/cli/tests/cli.rs`. Each CLI test runs in its own temporary root and
-user theme directory, so the real desktop configuration is never modified.
+Unit tests cover every crate; `desktop/cli/tests/cli.rs` runs the binary end to
+end in temporary roots and user theme directories.
 
 ## Command line
 
 ```bash
 cargo build --workspace
+
+# Themes
 ./target/debug/my-linux-theme list
 ./target/debug/my-linux-theme info cyberpunk
 ./target/debug/my-linux-theme preview cyberpunk
-./target/debug/my-linux-theme render cyberpunk
+./target/debug/my-linux-theme render cyberpunk --integration rofi
 ./target/debug/my-linux-theme create my-theme --from cyberpunk
-./target/debug/my-linux-theme create forest --base '#6EBE5A'
 ./target/debug/my-linux-theme import ./theme.toml --as imported
 ./target/debug/my-linux-theme export my-theme ./my-theme.toml
-./target/debug/my-linux-theme apply my-theme
+./target/debug/my-linux-theme remove my-theme
+
+# Desktop
+./target/debug/my-linux-theme apply cyberpunk
+./target/debug/my-linux-theme apply nature --integration kitty
+./target/debug/my-linux-theme apply cyberpunk --reload
+./target/debug/my-linux-theme integrations list
 ./target/debug/my-linux-theme status
 ./target/debug/my-linux-theme rollback
 ./target/debug/my-linux-theme restore
+
+# Recovery
 ./target/debug/my-linux-theme history
 ./target/debug/my-linux-theme backup list
 ./target/debug/my-linux-theme doctor
-./target/debug/my-linux-theme remove my-theme
 ```
 
-Every command accepts `--root <directory>` to pick the installation root. The
-default is `$MY_LINUX_ROOT` if set, otherwise `target/theme-test`.
+`--root <directory>` picks the installation root (default `$MY_LINUX_ROOT`,
+otherwise `target/theme-test`). `--integration <id>` limits an apply to the named
+integrations. `--reload` reloads running applications that are detected; without
+it no process is touched.
+
+## Integrations
+
+| Id | Application | Generated file | Reload |
+|---|---|---|---|
+| `waybar` | Waybar | `waybar.css` | `killall -SIGUSR2 waybar` |
+| `rofi` | Rofi | `rofi/theme.rasi` | applied on next launch |
+| `hyprland` | Hyprland | `hyprland/my-linux.conf` | `hyprctl reload` |
+| `kitty` | Kitty | `kitty/my-linux.conf` | `pkill -USR1 -x kitty` |
+| `dunst` | Notifications | `dunst/dunstrc` | `dunstctl reload` |
+| `hyprlock` | Lock screen | `hyprlock/hyprlock.conf` | applied on next lock |
+
+Each integration renders from the same palette, validates its own output and is
+installed independently. Hyprland and Kitty files are snippets meant to be
+sourced from the user's own configuration — My Linux never rewrites those files:
+
+```conf
+# ~/.config/hypr/hyprland.conf
+source = ~/.config/hypr/my-linux.conf
+
+# ~/.config/kitty/kitty.conf
+include ~/.config/kitty/my-linux.conf
+```
+
+An application that is not installed simply never reads its generated file;
+detection only decides whether a reload is attempted.
 
 ## Themes
 
 A theme is a TOML palette. Built-in themes live in `themes/`, user themes in
 `$MY_LINUX_USER_THEMES` (default `$XDG_DATA_HOME/my-linux/themes`,
-usually `~/.local/share/my-linux/themes`). User themes are searched first, so
-they can override a built-in theme with the same id.
+usually `~/.local/share/my-linux/themes`). User themes are searched first.
 
 ```toml
 [theme]
@@ -108,68 +140,64 @@ hover = "#00E6FF"
 selected = "#451B48"
 ```
 
-Layout on disk, both accepted:
-
-```text
-themes/<id>/colors/palette.toml      # directory theme
-themes/<id>.toml                     # single-file theme
-```
+Accepted layouts: `themes/<id>/colors/palette.toml` or `themes/<id>.toml`.
 
 Validation rules:
 
 - `id` uses lowercase letters, digits, `-` or `_`, and must match its directory.
 - `name`, `version` (`MAJOR.MINOR.PATCH`) and `description` are required.
 - `schema` must be `1`; a newer schema is rejected with a clear error.
-- All eleven colours and three states are required after inheritance is applied.
+- All eleven colours and three states are required after inheritance.
 - `extends` must name an existing theme; cycles are rejected.
-- Invalid themes are listed by `list` and reported by `doctor` instead of
-  silently disappearing.
+- Invalid themes are listed by `list` and reported by `doctor`.
 
 ## Installation root layout
 
 ```text
 <root>/
-├── waybar.css                        # generated configuration
-├── backups/
-│   ├── waybar.css.original           # first original configuration, never overwritten
-│   └── waybar.css.previous           # state before the last operation (used by rollback)
+├── waybar.css
+├── rofi/theme.rasi
+├── hyprland/my-linux.conf
+├── kitty/my-linux.conf
+├── dunst/dunstrc
+├── hyprlock/hyprlock.conf
+├── backups/<file>.original            # first original configuration, never overwritten
+├── backups/<file>.previous            # state before the last operation (rollback)
 └── state/
-    ├── active-theme                  # theme currently installed
-    ├── installed.tsv                 # installed files and their digests
-    ├── journal.tsv                   # present only while an operation is in flight
-    ├── previous-theme                # theme to return to on rollback
-    └── history.log                   # apply / restore / rollback / recover history
+    ├── active-theme
+    ├── installed.tsv                  # installed files and their digests
+    ├── journal.tsv                    # present only while an operation is in flight
+    ├── previous-theme
+    └── history.log
 ```
 
 ## Safety guarantees
 
-- Every apply is a transaction: generate, validate, journal, back up, install
-  atomically, then commit the new state.
-- A failure at any step rolls the installation back; a failed apply never leaves
-  a half-themed desktop.
-- An interrupted operation is detected through the journal and reverted by the
-  next command that touches the installation.
-- The first original configuration is backed up once and never replaced.
-- Replacing a configuration keeps its file permissions.
-- Symlinked destinations are written through; the link is preserved.
-- Files changed by hand are detected and reported.
-- `restore` and `rollback` refuse to run when the backup they need is missing,
-  and say which file is missing.
-- `remove` only ever deletes inside the user theme directory; built-in themes
-  cannot be removed.
+- Every apply is one transaction across all selected integrations: render,
+  validate, journal, back up, install atomically, commit — or roll back.
+- A failed or interrupted operation never leaves a half-themed desktop; the
+  journal is replayed on the next command.
+- The first original configuration of each file is backed up once and never
+  replaced. Files that My Linux generated are never mistaken for user originals.
+- Replacing a configuration keeps its file permissions; symlinked destinations
+  are written through and the link is preserved.
+- `restore` puts originals back, removes generated files that never replaced a
+  user file, and refuses to delete a file you edited by hand.
+- `rollback` and `restore` refuse to run when there is nothing to restore.
+- Reloads only happen with `--reload`, only for detected applications, and a
+  failed reload never breaks the installation.
 
 ## Repository layout
 
 ```text
 desktop/
-├── core/
-│   ├── src/lib.rs          # registry wiring, installation and restore entry points
-│   └── src/transaction.rs  # journal, transaction, rollback, history, diagnostics
-├── theme-engine/           # discovery, schema validation, inheritance, generation
-├── config-manager/         # safe file operations: backup, atomic install, restore, digests
-├── components/             # shared desktop components (placeholder)
-└── cli/                    # the my-linux-theme binary and its integration tests
-themes/                     # built-in theme definitions
-configs/                    # reference configuration templates
-docs/                       # product roadmap
+├── core/            # registry wiring, transactions, rollback, history, diagnostics
+├── theme-engine/    # discovery, schema validation, inheritance, generation
+├── config-manager/  # atomic install, backups, restore, digests
+├── integrations/    # Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock renderers
+├── components/      # shared desktop components (placeholder)
+└── cli/             # the my-linux-theme binary and its integration tests
+themes/              # built-in theme definitions
+configs/             # reference configuration templates
+docs/                # product roadmap
 ```

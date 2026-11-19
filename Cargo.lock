@@ -4,15 +4,15 @@ version = 4
 
 [[package]]
 name = "config-manager"
-version = "0.9.0"
+version = "0.10.0"
 
 [[package]]
 name = "desktop-components"
-version = "0.9.0"
+version = "0.10.0"
 
 [[package]]
 name = "desktop-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "config-manager",
  "desktop-integrations",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-integrations"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "theme-engine",
 ]
@@ -50,7 +50,7 @@ dependencies = [
 
 [[package]]
 name = "my-linux-theme"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "desktop-core",
 ]
@@ -125,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "theme-engine"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "serde",
  "toml",

@@ -868,6 +868,8 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 
 ## Phase 4 — Complete core Hyprland integrations
 
+**Current phase: Complete**
+
 Implementation order:
 
 1. Waybar.
@@ -879,14 +881,28 @@ Implementation order:
 
 For each integration:
 
-- [ ] Configuration template.
-- [ ] Renderer.
-- [ ] Output validation.
-- [ ] Safe installation.
-- [ ] Backup.
-- [ ] Restore.
-- [ ] Reload handler.
-- [ ] Integration tests.
+- [x] Configuration template.
+- [x] Renderer.
+- [x] Output validation.
+- [x] Safe installation.
+- [x] Backup.
+- [x] Restore.
+- [x] Reload handler.
+- [x] Integration tests.
+
+| Integration | Renderer | Validation | Reload | Tests |
+|---|---|---|---|---|
+| Waybar (`waybar.css`) | Yes | Yes | `killall -SIGUSR2 waybar` | Yes |
+| Rofi (`rofi/theme.rasi`) | Yes | Yes | next launch | Yes |
+| Hyprland (`hyprland/my-linux.conf`) | Yes | Yes | `hyprctl reload` | Yes |
+| Kitty (`kitty/my-linux.conf`) | Yes | Yes | `pkill -USR1 -x kitty` | Yes |
+| Notifications (`dunst/dunstrc`) | Yes | Yes | `dunstctl reload` | Yes |
+| Lock screen (`hyprlock/hyprlock.conf`) | Yes | Yes | next lock | Yes |
+
+**Status:** Complete (v0.10.0) for rendering and safe installation into the
+installation root. Writing directly into the live `~/.config` paths still needs
+the destination-mapping command plus explicit user authorization, so the live
+desktop is not modified automatically.
 
 **Acceptance:** One theme applies consistently across the core desktop.
 

@@ -5,6 +5,29 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-19
+
+### Added
+
+- `integrations list` shows every supported application, its destination file
+  and its reload behaviour.
+- `integrations status` reports which of those applications are installed.
+- `apply --integration <id>` (repeatable) applies only the named integrations.
+- `apply --reload` reloads detected applications after a successful apply; no
+  process is touched without the flag.
+- `render <theme> --integration <id>` prints any generated application
+  configuration, not just Waybar CSS.
+- CLI integration tests for the integration listing, multi-file apply,
+  single-integration apply, per-integration render, unknown-integration errors,
+  reload reporting and restore of generated files.
+
+### Changed
+- `apply` reports every installed file and states whether a reload was skipped.
+- `restore` removes the obsolete rollback snapshots and reports honestly when
+  no original configuration was replaced.
+- Phase 4 of the roadmap is marked complete and the README documents the
+  integration table, snippet layout and safety guarantees.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added
