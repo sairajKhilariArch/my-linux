@@ -257,3 +257,11 @@ mod tests {
 }
 
 pub mod render;
+pub mod transaction;
+
+pub use config_manager;
+pub use transaction::{
+    ApplyError, ApplyReport, Diagnostic, FileState, HistoryEntry, InstalledEntry, Modification,
+    apply_theme, detect_modifications, diagnose, format_timestamp, installed_entries, read_history,
+    recover_interrupted, restore_theme, rollback_theme,
+};

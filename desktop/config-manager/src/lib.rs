@@ -276,6 +276,46 @@ pub fn install_content(content: &[u8], destination: impl AsRef<Path>) -> Result<
     result
 }
 
+/// Stable 64-bit FNV-1a digest of `content`, as lowercase hexadecimal.
+///
+/// Used to detect configuration files that changed after My Linux installed
+/// them, without pulling in a hashing dependency.
+pub fn digest(content: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+
+    for byte in content {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+
+    format!("{hash:016x}")
+}
+
+/// Digest of a file's current contents.
+pub fn digest_file(path: impl AsRef<Path>) -> Result<String, ConfigError> {
+    Ok(digest(&fs::read(path)?))
+}
+
+/// Copies `source` over `snapshot`, replacing any previous snapshot.
+///
+/// Snapshots are the state a rollback returns to, so they are replaced on
+/// every operation instead of being preserved forever.
+pub fn snapshot_file(
+    source: impl AsRef<Path>,
+    snapshot: impl AsRef<Path>,
+) -> Result<(), ConfigError> {
+    install_file(source, snapshot)
+}
+
+/// Removes a file, treating an already missing file as success.
+pub fn remove_file_if_exists(path: impl AsRef<Path>) -> Result<(), ConfigError> {
+    match fs::remove_file(path.as_ref()) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,6 +602,47 @@ mod tests {
                 .is_symlink()
         );
         assert_eq!(fs::read_to_string(&real).unwrap(), "new theme");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn digest_is_stable_and_content_dependent() {
+        assert_eq!(digest(b"theme"), digest(b"theme"));
+        assert_ne!(digest(b"theme"), digest(b"Theme"));
+        assert_eq!(digest(b"").len(), 16);
+    }
+
+    #[test]
+    fn snapshot_replaces_an_existing_snapshot() {
+        let dir = test_dir("snapshot");
+
+        let source = dir.join("theme.css");
+        let snapshot = dir.join("theme.css.previous");
+
+        fs::write(&source, "current theme").unwrap();
+        fs::write(&snapshot, "older snapshot").unwrap();
+
+        snapshot_file(&source, &snapshot).unwrap();
+
+        assert_eq!(fs::read_to_string(&snapshot).unwrap(), "current theme");
+        assert_eq!(fs::read_to_string(&source).unwrap(), "current theme");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn removing_a_missing_file_is_not_an_error() {
+        let dir = test_dir("remove-missing");
+
+        remove_file_if_exists(dir.join("absent.css")).unwrap();
+
+        let present = dir.join("present.css");
+        fs::write(&present, "content").unwrap();
+
+        remove_file_if_exists(&present).unwrap();
+
+        assert!(!present.exists());
 
         fs::remove_dir_all(dir).unwrap();
     }

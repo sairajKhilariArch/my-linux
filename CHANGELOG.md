@@ -5,6 +5,37 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-19
+
+### Added
+
+- Transaction-style application in `desktop-core::transaction`: generate,
+  validate, journal, back up, install, commit — or roll every file back on
+  failure, so a failed apply never leaves a half-themed desktop.
+- Installation journal (`state/journal.tsv`): written before the first file is
+  touched and cleared on commit. An interrupted operation is replayed and
+  reverted by the next command that touches the installation.
+- Backup retention scheme: `backups/<file>.original` keeps the first original
+  configuration forever, `backups/<file>.previous` holds the state before the
+  latest operation and powers `rollback`.
+- Installed-state tracking (`state/installed.tsv`) with per-file digests, and
+  modification detection that distinguishes unmodified, hand-edited and missing
+  configurations.
+- Installation history (`state/history.log`) with apply, restore, rollback and
+  recovery entries, plus `format_timestamp` for readable UTC timestamps.
+- `diagnose()`: installation root, theme loading, active theme, interrupted
+  journal, modified files and original backup in one report.
+- Configuration destination mapping (`destination`, `original_backup`,
+  `previous_backup`) so integrations share one layout definition.
+- `digest`, `digest_file`, `snapshot_file` and `remove_file_if_exists` in the
+  configuration manager.
+
+### Changed
+
+- `apply` and `restore` now run through the transaction instead of writing a
+  single file directly, and both record their outcome in the history.
+- Applying a theme validates the generated CSS before anything is written.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added
