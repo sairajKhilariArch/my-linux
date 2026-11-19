@@ -5,6 +5,28 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-19
+
+### Added
+
+- `WaybarPaths` / `waybar_paths(root)`, a single definition of where the
+  Waybar configuration and its first-run backup live inside an installation
+  root (`waybar.css` and `backups/waybar.css.original`).
+- `restore_waybar_theme(destination, backup)`, the supported restore path for
+  the Waybar integration. It fails with `MissingBackup` instead of silently
+  doing nothing.
+- Active theme tracking: `write_active_theme`, `read_active_theme` and
+  `clear_active_theme` record the applied theme in `state/active-theme` under
+  the installation root and remove it after a restore.
+- Core tests for path mapping, repeated installs, switching themes, the full
+  install/restore cycle and the active-theme round trip.
+
+### Changed
+- `install_waybar_theme` documents that the original backup is created once,
+  so repeated applications never overwrite the user's first configuration.
+- `Theme` is re-exported from `desktop-core`, so the CLI no longer needs to
+  depend on the theme engine directly.
+
 ## [0.2.0] - 2026-11-19
 
 ### Added
