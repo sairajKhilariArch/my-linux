@@ -937,15 +937,34 @@ user's own configuration imports, so none of them rewrites a live config.
 
 ## Phase 6 — Wallpapers and desktop assets
 
-- [ ] Wallpaper manager.
-- [ ] Wallpaper library.
-- [ ] Wallpaper preview.
-- [ ] Wallpaper profiles.
-- [ ] Palette extraction.
-- [ ] Font management.
-- [ ] Icon themes.
-- [ ] Cursor themes.
-- [ ] Asset validation.
+**Current phase: Complete**
+
+- [x] Wallpaper manager.
+- [x] Wallpaper library.
+- [x] Wallpaper preview (ANSI truecolor).
+- [ ] Wallpaper profiles (delivered with Phase 7 profiles).
+- [x] Palette extraction.
+- [x] Font management.
+- [x] Icon themes.
+- [x] Cursor themes.
+- [x] Asset validation.
+- [x] Wallpaper installation and restoration.
+- [x] Wallpaper switching through swww or hyprpaper.
+- [x] Wallpaper history.
+- [x] Asset discovery, installation and removal in the My Linux library.
+
+| Area | Implementation |
+|---|---|
+| Discovery | `$MY_LINUX_WALLPAPERS`, `~/.local/share/my-linux/wallpapers`, `~/Pictures/Wallpapers`; PNG and JPEG |
+| Preview | ANSI truecolor half blocks, width clamped to 8–80 cells |
+| Apply / switch | copied into the library, recorded, then `swww img` or `hyprctl hyprpaper` |
+| History / restore | `state/wallpaper-history.log`, previous wallpaper kept |
+| Palette extraction | 5-bit histogram, seed from the most chromatic frequent colour, generator guarantees readability |
+| Approval | nothing saved or applied without `--save` / `--apply` |
+| Assets | font/icon/cursor discovery, `assets install|remove`, `state/assets.conf`, `hyprland/assets.conf` snippet |
+
+**Status:** Complete (v0.12.0). A wallpaper-derived theme is a normal user theme
+and is applied through the same transaction as any other theme.
 
 **Acceptance:** A desktop profile can control colors and associated visual assets.
 

@@ -10,6 +10,12 @@ use desktop_core::{
     validate_id,
 };
 
+use desktop_core::assets::{
+    AssetKind, AssetSettings, WallpaperLibrary, WallpaperState, apply_cursor, detect_tool,
+    discover, extract_palette, hyprland_assets_file, install_asset, installed_assets,
+    read_settings, remove_asset, render_preview, save_theme, set_wallpaper, write_settings,
+};
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -43,6 +49,32 @@ Desktop commands:
 Integration commands:
   integrations list        List supported desktop integrations
   integrations status      Show which integrations are installed
+
+Wallpaper commands:
+  wallpaper list           List wallpapers in the library
+  wallpaper preview <name> [--width <cells>]
+                           Print an ANSI preview of a wallpaper
+  wallpaper apply <name> [--no-set]
+                           Install, record and set a wallpaper
+  wallpaper current        Show the active wallpaper
+  wallpaper history        Show wallpaper changes
+  wallpaper restore        Return to the previous wallpaper
+  wallpaper palette <name> [--name <id>] [--save] [--apply]
+                           Extract a theme from a wallpaper
+
+Asset commands:
+  assets fonts|icons|cursors
+                           List discovered fonts, icon and cursor themes
+  assets status            Show asset settings and discovered assets
+  assets set [--font <family>] [--font-size <n>] [--icon-theme <name>]
+             [--cursor-theme <name>] [--cursor-size <n>] [--reload]
+                           Store asset settings and write the Hyprland snippet
+  assets reset             Clear asset settings
+  assets install <path> [--kind font|icon|cursor]
+                           Copy an asset into the My Linux library
+  assets installed         List assets in the My Linux library
+  assets remove <name> [--kind font|icon|cursor]
+                           Remove an installed asset
 
 Recovery commands:
   backup list              List configuration backups
@@ -597,6 +629,500 @@ fn command_doctor(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn value_of<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|argument| argument == flag)
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
+}
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|argument| argument == flag)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.0} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn sanitize_id(text: &str) -> String {
+    let mut id = String::new();
+
+    for character in text.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_lowercase() || character.is_ascii_digit() {
+            id.push(character);
+        } else if !id.ends_with('-') {
+            id.push('-');
+        }
+    }
+
+    let id = id.trim_matches('-').to_string();
+
+    if id.is_empty() {
+        "wallpaper".to_string()
+    } else {
+        id
+    }
+}
+
+fn resolve_wallpaper(
+    library: &WallpaperLibrary,
+    query: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = PathBuf::from(query);
+
+    if path.is_file() {
+        return Ok(path);
+    }
+
+    library
+        .find(query)
+        .map(|wallpaper| wallpaper.path)
+        .ok_or_else(|| format!("Unknown wallpaper: {query}").into())
+}
+
+fn apply_wallpaper_to_desktop(path: &Path, set: bool) {
+    if !set {
+        println!("Desktop:    skipped (pass --no-set only when you set it yourself)");
+        return;
+    }
+
+    match detect_tool() {
+        Some(tool) => match set_wallpaper(tool, path) {
+            Ok(commands) => {
+                for command in commands {
+                    println!("Applied:    {command}");
+                }
+            }
+            Err(error) => println!("Warning:    wallpaper tool failed: {error}"),
+        },
+        None => {
+            println!("Desktop:    unchanged (install swww or hyprpaper to switch automatically)")
+        }
+    }
+}
+
+fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let subcommand = rest.first().map(String::as_str).unwrap_or("list");
+    let args = &rest[1..];
+
+    match subcommand {
+        "list" => {
+            let library = WallpaperLibrary::from_environment();
+
+            println!("Wallpaper library:");
+
+            for directory in library.dirs() {
+                println!("  {}", describe(directory));
+            }
+
+            let wallpapers = library.list();
+
+            if wallpapers.is_empty() {
+                println!("\nNo wallpapers found. Add PNG or JPEG files to a library directory.");
+                return Ok(());
+            }
+
+            println!();
+
+            for wallpaper in wallpapers {
+                println!(
+                    "  {:<24} {:>9}  {}",
+                    wallpaper.name,
+                    format_bytes(wallpaper.bytes),
+                    wallpaper.path.display()
+                );
+            }
+        }
+
+        "preview" => {
+            let query = args
+                .first()
+                .ok_or("Usage: my-linux-theme wallpaper preview <file|name> [--width <cells>]")?;
+            let width = value_of(args, "--width")
+                .map(|value| value.parse().unwrap_or(40))
+                .unwrap_or(40);
+            let path = resolve_wallpaper(&WallpaperLibrary::from_environment(), query)?;
+
+            println!("{}", path.display());
+            print!("{}", render_preview(&path, width)?);
+        }
+
+        "apply" => {
+            let query = args
+                .first()
+                .ok_or("Usage: my-linux-theme wallpaper apply <file|name> [--no-set]")?;
+            let library = WallpaperLibrary::from_environment();
+            let source = resolve_wallpaper(&library, query)?;
+            let installed = library.install(&source)?;
+
+            WallpaperState::new(root).set(&installed.path, "apply")?;
+
+            println!("Wallpaper:  {}", installed.path.display());
+
+            if let Some(directory) = library.install_dir() {
+                println!("Library:    {}", directory.display());
+            }
+
+            apply_wallpaper_to_desktop(&installed.path, !has_flag(args, "--no-set"));
+        }
+
+        "current" => {
+            let state = WallpaperState::new(root);
+
+            match state.current() {
+                Some(path) => {
+                    println!("Current wallpaper: {}", path.display());
+                    println!(
+                        "Exists:            {}",
+                        if path.is_file() { "yes" } else { "no" }
+                    );
+                }
+                None => println!("Current wallpaper: none recorded"),
+            }
+
+            if let Some(previous) = state.previous() {
+                println!("Previous:          {}", previous.display());
+            }
+        }
+
+        "history" => {
+            let entries = WallpaperState::new(root).history();
+
+            if entries.is_empty() {
+                println!("No wallpaper changes recorded.");
+            }
+
+            for entry in entries {
+                println!(
+                    "{}  {:<8} {}",
+                    format_timestamp(entry.timestamp),
+                    entry.action,
+                    entry.path
+                );
+            }
+        }
+
+        "restore" => {
+            let state = WallpaperState::new(root);
+            let previous = state
+                .previous()
+                .ok_or("No previous wallpaper is recorded")?;
+
+            if !previous.is_file() {
+                return Err(format!(
+                    "The previous wallpaper no longer exists: {}",
+                    previous.display()
+                )
+                .into());
+            }
+
+            state.set(&previous, "restore")?;
+
+            println!("Wallpaper restored: {}", previous.display());
+            apply_wallpaper_to_desktop(&previous, true);
+        }
+
+        "palette" => {
+            let query = args.first().ok_or(
+                "Usage: my-linux-theme wallpaper palette <file|name> [--name <id>] [--save] [--apply]",
+            )?;
+            let path = resolve_wallpaper(&WallpaperLibrary::from_environment(), query)?;
+            let proposal = extract_palette(&path)?;
+
+            println!("Wallpaper: {}x{}", proposal.width, proposal.height);
+            println!("Source:    {}", proposal.wallpaper.display());
+            println!();
+            println!("Dominant colours:");
+
+            for (color, count) in proposal.dominant.iter().take(5) {
+                color_block(&color.to_hex(), &format!("{count} px"));
+            }
+
+            println!();
+            println!("Proposed palette:");
+
+            for (label, color) in [
+                ("Background", proposal.palette.background),
+                ("Surface", proposal.palette.surface),
+                ("Primary", proposal.palette.primary),
+                ("Secondary", proposal.palette.secondary),
+                ("Text", proposal.palette.text),
+                ("Border", proposal.palette.border),
+            ] {
+                color_block(&color.to_hex(), label);
+            }
+
+            if !has_flag(args, "--save") && !has_flag(args, "--apply") {
+                println!(
+                    "\nNothing was saved. Pass --save to store this as a theme, or --apply to save and apply it."
+                );
+                return Ok(());
+            }
+
+            let id = value_of(args, "--name")
+                .map(sanitize_id)
+                .unwrap_or_else(|| {
+                    sanitize_id(
+                        path.file_stem()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("wallpaper"),
+                    )
+                });
+
+            let theme = save_theme(
+                user_themes_dir(),
+                &id,
+                &display_name(&id),
+                &path,
+                &proposal.palette,
+            )?;
+
+            println!(
+                "\nSaved theme: {} ({})",
+                theme.metadata.name,
+                theme_path(&id).display()
+            );
+
+            if has_flag(args, "--apply") {
+                let report = apply_theme_with(root, &theme, integrations::all())?;
+
+                println!(
+                    "Applied:     {} theme, {} files",
+                    report.theme_id,
+                    report.installed_files.len()
+                );
+
+                for file in &report.installed_files {
+                    println!("Installed:   {}", destination(root, file).display());
+                }
+
+                println!(
+                    "Reload:      skipped (run `apply {} --reload` to reload running applications)",
+                    report.theme_id
+                );
+            }
+        }
+
+        other => {
+            return Err(format!("Unknown wallpaper command: {other}\n\n{HELP}").into());
+        }
+    }
+
+    Ok(())
+}
+
+fn list_assets(kind: AssetKind, title: &str) {
+    let assets = discover(kind);
+
+    println!("{title}:");
+
+    if assets.is_empty() {
+        println!("  none found in the usual XDG and /usr/share directories");
+        return;
+    }
+
+    for asset in assets {
+        println!("  {:<28} {}", asset.name, asset.path.display());
+    }
+}
+
+fn asset_kind_of(path: &Path) -> Result<AssetKind, Box<dyn std::error::Error>> {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+
+    if ["ttf", "otf", "ttc", "woff", "woff2"].contains(&extension.as_str()) {
+        return Ok(AssetKind::Font);
+    }
+
+    if path.is_dir() {
+        if path.join("cursors").is_dir() {
+            return Ok(AssetKind::Cursor);
+        }
+
+        if path.join("index.theme").is_file() {
+            return Ok(AssetKind::Icon);
+        }
+    }
+
+    Err("Pass --kind font, --kind icon or --kind cursor for this asset".into())
+}
+
+fn command_assets(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let subcommand = rest.first().map(String::as_str).unwrap_or("status");
+    let args = &rest[1..];
+
+    match subcommand {
+        "fonts" => list_assets(AssetKind::Font, "Fonts"),
+        "icons" => list_assets(AssetKind::Icon, "Icon themes"),
+        "cursors" => list_assets(AssetKind::Cursor, "Cursor themes"),
+
+        "status" => {
+            let settings = read_settings(root);
+
+            println!("Asset settings ({})", root.display());
+            println!(
+                "Font:              {}",
+                settings.font.as_deref().unwrap_or("system default")
+            );
+            println!("Font size:         {}", settings.font_size);
+            println!(
+                "Icon theme:        {}",
+                settings.icon_theme.as_deref().unwrap_or("system default")
+            );
+            println!(
+                "Cursor theme:      {}",
+                settings.cursor_theme.as_deref().unwrap_or("system default")
+            );
+            println!("Cursor size:       {}", settings.cursor_size);
+            println!(
+                "Hyprland snippet:  {}",
+                describe(&hyprland_assets_file(root))
+            );
+            println!();
+            println!("Discovered on this system:");
+
+            for kind in [AssetKind::Font, AssetKind::Icon, AssetKind::Cursor] {
+                println!("  {:<8} {}", kind.label(), discover(kind).len());
+            }
+
+            let installed = installed_assets(root);
+
+            println!();
+
+            if installed.is_empty() {
+                println!("Installed assets:  none");
+            } else {
+                for asset in installed {
+                    println!("Installed:         {} {}", asset.kind.label(), asset.name);
+                }
+            }
+        }
+
+        "set" => {
+            let mut settings = read_settings(root);
+
+            if let Some(value) = value_of(args, "--font") {
+                settings.font = Some(value.to_string());
+            }
+
+            if let Some(value) = value_of(args, "--font-size") {
+                settings.font_size = value.parse().map_err(|_| "--font-size requires a number")?;
+            }
+
+            if let Some(value) = value_of(args, "--icon-theme") {
+                settings.icon_theme = Some(value.to_string());
+            }
+
+            if let Some(value) = value_of(args, "--cursor-theme") {
+                settings.cursor_theme = Some(value.to_string());
+            }
+
+            if let Some(value) = value_of(args, "--cursor-size") {
+                settings.cursor_size = value
+                    .parse()
+                    .map_err(|_| "--cursor-size requires a number")?;
+            }
+
+            write_settings(root, &settings)?;
+
+            println!("Asset settings written.");
+            println!("Snippet: {}", hyprland_assets_file(root).display());
+
+            if has_flag(args, "--reload") {
+                match &settings.cursor_theme {
+                    Some(theme) => match apply_cursor(theme, settings.cursor_size) {
+                        Ok(command) => println!("Reloaded: {command}"),
+                        Err(error) => println!("Warning:  {error}"),
+                    },
+                    None => println!("Reload:   skipped (no cursor theme is set)"),
+                }
+            }
+        }
+
+        "reset" => {
+            write_settings(root, &AssetSettings::default())?;
+            println!("Asset settings cleared.");
+        }
+
+        "install" => {
+            let source = args
+                .first()
+                .ok_or("Usage: my-linux-theme assets install <path> [--kind <font|icon|cursor>]")?;
+            let kind = match value_of(args, "--kind") {
+                Some(kind) => {
+                    AssetKind::parse(kind).ok_or("--kind must be font, icon or cursor")?
+                }
+                None => asset_kind_of(Path::new(source))?,
+            };
+
+            let installed = install_asset(root, kind, source)?;
+
+            println!("Installed {}: {}", kind.label(), installed.display());
+        }
+
+        "installed" => {
+            let installed = installed_assets(root);
+
+            if installed.is_empty() {
+                println!("No assets installed.");
+            }
+
+            for asset in installed {
+                println!(
+                    "  {:<8} {:<28} {}",
+                    asset.kind.label(),
+                    asset.name,
+                    asset.path.display()
+                );
+            }
+        }
+
+        "remove" => {
+            let name = args
+                .first()
+                .ok_or("Usage: my-linux-theme assets remove <name> [--kind <font|icon|cursor>]")?;
+
+            let removed = match value_of(args, "--kind") {
+                Some(kind) => {
+                    let kind =
+                        AssetKind::parse(kind).ok_or("--kind must be font, icon or cursor")?;
+
+                    remove_asset(root, kind, name)?
+                }
+                None => {
+                    let mut removed = None;
+
+                    for kind in [AssetKind::Font, AssetKind::Icon, AssetKind::Cursor] {
+                        if let Ok(path) = remove_asset(root, kind, name) {
+                            removed = Some(path);
+                            break;
+                        }
+                    }
+
+                    removed.ok_or_else(|| format!("No asset named `{name}` is installed"))?
+                }
+            };
+
+            println!("Removed: {}", removed.display());
+        }
+
+        other => {
+            return Err(format!("Unknown assets command: {other}\n\n{HELP}").into());
+        }
+    }
+
+    Ok(())
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (root_flag, args) = parse_args(env::args().skip(1).collect())?;
 
@@ -785,6 +1311,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "history" => command_history(&root),
 
         "doctor" => command_doctor(&root)?,
+
+        "wallpaper" => command_wallpaper(&root, rest)?,
+
+        "assets" => command_assets(&root, rest)?,
 
         other => {
             return Err(format!("Unknown command: {other}\n\n{HELP}").into());

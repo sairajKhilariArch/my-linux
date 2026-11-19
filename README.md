@@ -31,7 +31,10 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | `status`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
 | Browser styling | Not implemented (no stable format) |
-| Profiles, wallpapers, fonts/icons/cursors, GUI, packaging | Not implemented |
+| Wallpaper library, preview, switching, history and restore | Implemented |
+| Palette extraction from a PNG/JPEG wallpaper | Implemented |
+| Font, icon-theme and cursor-theme discovery and settings | Implemented |
+| Profiles, GUI, packaging | Not implemented |
 
 ## Build and verify
 
@@ -73,6 +76,19 @@ cargo build --workspace
 ./target/debug/my-linux-theme history
 ./target/debug/my-linux-theme backup list
 ./target/debug/my-linux-theme doctor
+
+# Wallpapers
+./target/debug/my-linux-theme wallpaper list
+./target/debug/my-linux-theme wallpaper preview neon --width 48
+./target/debug/my-linux-theme wallpaper apply neon
+./target/debug/my-linux-theme wallpaper palette neon --save --name neon-dream
+./target/debug/my-linux-theme wallpaper restore
+
+# Assets
+./target/debug/my-linux-theme assets fonts
+./target/debug/my-linux-theme assets status
+./target/debug/my-linux-theme assets set --icon-theme Papirus --cursor-theme Bibata --cursor-size 28
+./target/debug/my-linux-theme assets install ./Inter-Regular.ttf
 ```
 
 `--root <directory>` picks the installation root (default `$MY_LINUX_ROOT`,
@@ -130,6 +146,31 @@ qt6ct. Btop needs `color_theme = "my-linux"` in `btop.conf`.
 
 An application that is not installed simply never reads its generated file;
 detection only decides whether a reload is attempted.
+
+## Wallpapers and assets
+
+Wallpapers come from `$MY_LINUX_WALLPAPERS` (colon separated) or, by default,
+`~/.local/share/my-linux/wallpapers` and `~/Pictures/Wallpapers`. PNG and JPEG
+files are read; `wallpaper preview` draws them with ANSI truecolor.
+
+`wallpaper apply` copies the file into the library, records it in
+`state/wallpaper` and `state/wallpaper-history.log`, then switches the desktop
+with `swww` or `hyprpaper` when one is detected. Without a wallpaper daemon the
+choice is recorded and nothing on the desktop changes; `wallpaper restore`
+returns to the previous wallpaper.
+
+`wallpaper palette` analyses the image, prints the dominant colours and a
+proposed palette, and does nothing else unless `--save` (write a user theme) or
+`--apply` (write and apply it) is passed — the active theme is never replaced
+silently. The derived theme is a normal theme: `list`, `preview`, `export` and
+`apply` treat it like any other.
+
+`assets` discovers fonts, icon themes and cursor themes in the XDG and
+`/usr/share` directories, copies installed assets into the My Linux library,
+and stores the chosen font, icon theme, cursor theme and sizes in
+`state/assets.conf`. Cursor settings are also written to
+`hyprland/assets.conf`, a snippet you source from your own Hyprland
+configuration; `--reload` additionally runs `hyprctl setcursor`.
 
 ## Themes
 
@@ -194,7 +235,11 @@ Validation rules:
     ├── installed.tsv                  # installed files and their digests
     ├── journal.tsv                    # present only while an operation is in flight
     ├── previous-theme
-    └── history.log
+    ├── history.log
+    ├── wallpaper                     # active wallpaper path
+    ├── wallpaper-previous
+    ├── wallpaper-history.log
+    └── assets.conf
 ```
 
 ## Safety guarantees
@@ -221,6 +266,7 @@ desktop/
 ├── theme-engine/    # discovery, schema validation, inheritance, generation
 ├── config-manager/  # atomic install, backups, restore, digests
 ├── integrations/    # one renderer per application (thirteen integrations)
+├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
 ├── components/      # shared desktop components (placeholder)
 └── cli/             # the my-linux-theme binary and its integration tests
 themes/              # built-in theme definitions

@@ -1,0 +1,9 @@
+[package]
+name = "desktop-assets"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+theme-engine = { path = "../theme-engine" }
+config-manager = { path = "../config-manager" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

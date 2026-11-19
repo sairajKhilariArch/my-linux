@@ -67,6 +67,19 @@ fn run_with_user_themes(root: &Path, args: &[&str], user_themes: &Path) -> Outpu
         .expect("the CLI binary should start")
 }
 
+/// Runs the CLI with extra environment variables.
+fn run_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(BIN);
+
+    command.arg("--root").arg(root).args(args);
+
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+
+    command.output().expect("the CLI binary should start")
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -626,6 +639,115 @@ fn apply_reports_reload_state_and_rejects_unknown_integrations() {
     );
     assert!(!unknown.status.success());
     assert!(stderr(&unknown).contains("Unknown integration"));
+}
+
+#[test]
+fn wallpaper_commands_discover_preview_and_generate_a_theme() {
+    let root = TempRoot::new("wallpaper-cli");
+    let library = root.join("pictures");
+    let user_themes = root.join("user-themes");
+
+    fs::create_dir_all(&library).unwrap();
+    fs::create_dir_all(&user_themes).unwrap();
+
+    let file = library.join("neon.png");
+
+    desktop_assets::testing::write_png(
+        &file,
+        32,
+        16,
+        &[
+            theme_engine::Color::new(12, 8, 18),
+            theme_engine::Color::new(255, 35, 90),
+        ],
+    )
+    .unwrap();
+
+    let env = [
+        ("MY_LINUX_WALLPAPERS", library.to_str().unwrap()),
+        ("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap()),
+    ];
+
+    let list = run_env(root.path(), &["wallpaper", "list"], &env);
+    assert!(list.status.success(), "{}", stderr(&list));
+    assert!(stdout(&list).contains("neon"));
+
+    let preview = run_env(root.path(), &["wallpaper", "preview", "neon"], &env);
+    assert!(preview.status.success(), "{}", stderr(&preview));
+    assert!(stdout(&preview).contains("\x1b[48;2;"));
+
+    let palette = run_env(
+        root.path(),
+        &[
+            "wallpaper",
+            "palette",
+            "neon",
+            "--save",
+            "--name",
+            "neon-dream",
+        ],
+        &env,
+    );
+    assert!(palette.status.success(), "{}", stderr(&palette));
+    assert!(stdout(&palette).contains("Saved theme"));
+    assert!(user_themes.join("neon-dream/colors/palette.toml").is_file());
+
+    let info = run_env(root.path(), &["info", "neon-dream"], &env);
+    assert!(info.status.success(), "{}", stderr(&info));
+    assert!(stdout(&info).contains("Neon Dream"));
+}
+
+#[test]
+fn wallpaper_and_asset_state_are_recorded() {
+    let root = TempRoot::new("wallpaper-state");
+    let library = root.join("pictures");
+
+    fs::create_dir_all(&library).unwrap();
+
+    let file = library.join("wall.png");
+
+    desktop_assets::testing::write_png(&file, 8, 8, &[theme_engine::Color::new(30, 30, 30)])
+        .unwrap();
+
+    let env = [("MY_LINUX_WALLPAPERS", library.to_str().unwrap())];
+
+    let apply = run_env(
+        root.path(),
+        &["wallpaper", "apply", "wall", "--no-set"],
+        &env,
+    );
+    assert!(apply.status.success(), "{}", stderr(&apply));
+    assert!(stdout(&apply).contains("skipped"));
+
+    let current = run_env(root.path(), &["wallpaper", "current"], &env);
+    assert!(stdout(&current).contains("wall.png"));
+
+    let history = run_env(root.path(), &["wallpaper", "history"], &env);
+    assert!(stdout(&history).contains("apply"));
+
+    let assets = run_env(
+        root.path(),
+        &[
+            "assets",
+            "set",
+            "--icon-theme",
+            "Papirus",
+            "--cursor-theme",
+            "Bibata",
+            "--cursor-size",
+            "28",
+        ],
+        &env,
+    );
+    assert!(assets.status.success(), "{}", stderr(&assets));
+    assert!(
+        root.read("hyprland/assets.conf")
+            .contains("XCURSOR_THEME,Bibata")
+    );
+
+    let status = run_env(root.path(), &["assets", "status"], &env);
+    assert!(status.status.success(), "{}", stderr(&status));
+    assert!(stdout(&status).contains("Bibata"));
 }
 
 #[test]

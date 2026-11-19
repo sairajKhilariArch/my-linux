@@ -5,6 +5,37 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-19
+
+### Added
+
+- New `desktop-assets` crate: wallpaper library, recorded wallpaper state and
+  history, ANSI truecolor preview, palette extraction, and font/icon/cursor
+  discovery with an asset library and settings.
+- `wallpaper list`, `preview`, `apply`, `current`, `history`, `restore` and
+  `palette` commands.
+- `wallpaper palette` analyses a PNG or JPEG wallpaper, prints the dominant
+  colours and a proposed palette, and derives the theme through the existing
+  palette generator. Nothing is saved or applied without `--save` / `--apply`,
+  so the active theme is never replaced silently.
+- `wallpaper apply` records the choice, copies the file into the library and
+  switches the desktop with `swww` or `hyprpaper` when one is detected; without
+  a wallpaper daemon the choice is recorded and the desktop is left untouched.
+- `assets fonts|icons|cursors` discovery, `assets status`, `assets set`,
+  `assets reset`, `assets install`, `assets installed` and `assets remove`.
+- `assets set` writes `state/assets.conf` plus a `hyprland/assets.conf` snippet
+  with `XCURSOR_THEME`, `XCURSOR_SIZE` and `cursor.size`; `--reload` also calls
+  `hyprctl setcursor` for a running Hyprland session.
+- 15 unit tests for the assets crate and 2 CLI end-to-end tests for wallpapers
+  and asset settings.
+
+### Changed
+
+- `image` with only the PNG and JPEG codecs is the first new dependency;
+  extracting a palette needs real pixel data and no lighter option exists.
+- Phase 6 of the roadmap is complete. Per-profile wallpapers move to Phase 7
+  together with profiles.
+
 ## [0.11.0] - 2026-11-19
 
 ### Added

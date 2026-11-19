@@ -7,3 +7,4 @@ edition.workspace = true
 theme-engine = { path = "../theme-engine" }
 config-manager = { path = "../config-manager" }
 desktop-integrations = { path = "../integrations" }
+desktop-assets = { path = "../assets" }

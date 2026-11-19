@@ -9,3 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 desktop-core = { path = "../core" }
+
+[dev-dependencies]
+desktop-assets = { path = "../assets" }
+theme-engine = { path = "../theme-engine" }
