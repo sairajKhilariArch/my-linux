@@ -1,6 +1,10 @@
 use desktop_core::{
     Color, Registry, ThemeMetadata, ThemeMetrics, ThemeTypography,
     config_manager::install_content,
+    deploy::{
+        DeployAction, DeployEntry, DeployReport, UndeployAction, UndeployReport,
+        default_config_dir, deploy, deploy_status, resolve_config_dir, undeploy,
+    },
     extensions::{ExtensionFormat, ExtensionRegistry, user_extensions_dir},
     generate_palette, integrations, read_active_theme, render_theme_full, render_theme_toml,
     transaction::{
@@ -60,6 +64,15 @@ Desktop commands:
   restore                  Restore the original configuration
   rollback                 Undo the most recent apply
   status                   Show the active theme and installation state
+
+Live desktop commands:
+  deploy [--config-dir <dir>] [--dry-run] [--yes] [--force] [--reload]
+                           Write generated files into the live config directory
+                           (default: $XDG_CONFIG_HOME, otherwise ~/.config)
+  deploy status [--config-dir <dir>]
+                           Show deployed files and whether they were modified
+  undeploy [--config-dir <dir>] [--dry-run] [--yes] [--force]
+                           Restore files replaced by deploy
 
 Integration commands:
   integrations list        List supported desktop integrations
@@ -1040,6 +1053,293 @@ fn command_repository(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::e
         other => {
             return Err(format!("Unknown repository command: {other}\n\n{HELP}").into());
         }
+    }
+
+    Ok(())
+}
+
+fn live_config_dir(option: Option<PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let directory = match option {
+        Some(directory) => directory,
+        None => default_config_dir()?,
+    };
+
+    Ok(resolve_config_dir(directory)?)
+}
+
+fn print_deploy_report(report: &DeployReport) {
+    println!("Live config: {}", report.config_dir.display());
+
+    for entry in &report.entries {
+        println!(
+            "  {:<9} {:<36} <- {}",
+            entry.action.label(),
+            entry.live_path.display(),
+            entry.relative_path
+        );
+    }
+
+    for skipped in &report.skipped {
+        println!(
+            "  skip      {:<36} {}",
+            skipped.relative_path, skipped.reason
+        );
+    }
+
+    for conflict in &report.conflicts {
+        println!("  CONFLICT  {}", conflict.display());
+    }
+
+    if report.entries.is_empty() && report.skipped.is_empty() {
+        println!("  No generated files are installed; apply a theme first.");
+    }
+
+    if report.dry_run {
+        println!("Dry run: no live files were written.");
+    }
+}
+
+fn print_undeploy_report(report: &UndeployReport) {
+    println!("Live config: {}", report.config_dir.display());
+
+    for entry in &report.entries {
+        println!(
+            "  {:<9} {:<36} <- {}",
+            entry.action.label(),
+            entry.live_path.display(),
+            entry.relative_path
+        );
+    }
+
+    for conflict in &report.conflicts {
+        println!("  CONFLICT  {}", conflict.display());
+    }
+
+    if report.entries.is_empty() {
+        println!("  No live deployment is recorded.");
+    }
+
+    if report.dry_run {
+        println!("Dry run: no live files were changed.");
+    }
+}
+
+fn reload_deployed_entries(entries: &[DeployEntry]) {
+    let mut reloaded = Vec::new();
+
+    for entry in entries {
+        let Some(id) = entry.integration else {
+            continue;
+        };
+
+        if !entry.action.writes() || reloaded.contains(&id) {
+            continue;
+        }
+
+        let Some(integration) = integrations::find(id) else {
+            continue;
+        };
+
+        match integrations::reload(integration) {
+            Ok(commands) => {
+                for command in commands {
+                    println!("Reloaded:  {id} ({command})");
+                }
+            }
+            Err(error) => println!("Reload:    {id} skipped ({error})"),
+        }
+
+        reloaded.push(id);
+    }
+}
+
+fn command_deploy(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    if rest.first().map(String::as_str) == Some("status") {
+        return command_deploy_status(&rest[1..]);
+    }
+
+    let mut config_dir = None;
+    let mut dry_run = false;
+    let mut yes = false;
+    let mut force = false;
+    let mut reload = false;
+    let mut index = 0;
+
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--config-dir" => {
+                config_dir = Some(PathBuf::from(
+                    rest.get(index + 1)
+                        .ok_or("--config-dir requires a directory")?,
+                ));
+                index += 2;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                index += 1;
+            }
+            "--yes" => {
+                yes = true;
+                index += 1;
+            }
+            "--force" => {
+                force = true;
+                index += 1;
+            }
+            "--reload" => {
+                reload = true;
+                index += 1;
+            }
+            other => return Err(format!("Unknown deploy option: {other}").into()),
+        }
+    }
+
+    let config_dir = live_config_dir(config_dir)?;
+
+    if !yes && !dry_run {
+        let report = deploy(root, &config_dir, force, true)?;
+        print_deploy_report(&report);
+
+        return Err(
+            "Refusing to write into the live config directory without explicit authorization. Re-run with `--yes` after reviewing the plan.\n"
+                .into(),
+        );
+    }
+
+    let report = deploy(root, &config_dir, force, dry_run)?;
+    print_deploy_report(&report);
+
+    if !dry_run {
+        println!(
+            "Deployed {} file(s); {} unchanged, {} skipped.",
+            report.changed(),
+            report
+                .entries
+                .iter()
+                .filter(|entry| entry.action == DeployAction::Unchanged)
+                .count(),
+            report.skipped.len()
+        );
+
+        if reload {
+            reload_deployed_entries(&report.entries);
+        }
+    }
+
+    Ok(())
+}
+
+fn command_deploy_status(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config_dir = None;
+    let mut index = 0;
+
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--config-dir" => {
+                config_dir = Some(PathBuf::from(
+                    rest.get(index + 1)
+                        .ok_or("--config-dir requires a directory")?,
+                ));
+                index += 2;
+            }
+            other => return Err(format!("Unknown deploy status option: {other}").into()),
+        }
+    }
+
+    let config_dir = live_config_dir(config_dir)?;
+    let status = deploy_status(&config_dir)?;
+
+    if status.is_empty() {
+        println!(
+            "No live deployment is recorded in {}.",
+            config_dir.display()
+        );
+
+        return Ok(());
+    }
+
+    println!("Live deployment in {}:", config_dir.display());
+
+    for entry in status {
+        let state = if !entry.exists {
+            "missing"
+        } else if entry.modified {
+            "modified by you"
+        } else {
+            "deployed"
+        };
+
+        println!(
+            "  {:<34} {:<16} backup {}",
+            entry.live_path.display(),
+            state,
+            entry.backup.label()
+        );
+    }
+
+    Ok(())
+}
+
+fn command_undeploy(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config_dir = None;
+    let mut dry_run = false;
+    let mut yes = false;
+    let mut force = false;
+    let mut index = 0;
+
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--config-dir" => {
+                config_dir = Some(PathBuf::from(
+                    rest.get(index + 1)
+                        .ok_or("--config-dir requires a directory")?,
+                ));
+                index += 2;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                index += 1;
+            }
+            "--yes" => {
+                yes = true;
+                index += 1;
+            }
+            "--force" => {
+                force = true;
+                index += 1;
+            }
+            other => return Err(format!("Unknown undeploy option: {other}").into()),
+        }
+    }
+
+    let config_dir = live_config_dir(config_dir)?;
+
+    if !yes && !dry_run {
+        let report = undeploy(root, &config_dir, force, true)?;
+        print_undeploy_report(&report);
+
+        return Err(
+            "Refusing to change the live config directory without explicit authorization. Re-run with `--yes` after reviewing the plan.\n"
+                .into(),
+        );
+    }
+
+    let report = undeploy(root, &config_dir, force, dry_run)?;
+    print_undeploy_report(&report);
+
+    if !dry_run {
+        let restored = report
+            .entries
+            .iter()
+            .filter(|entry| entry.action == UndeployAction::Restore)
+            .count();
+        let removed = report
+            .entries
+            .iter()
+            .filter(|entry| entry.action == UndeployAction::Remove)
+            .count();
+
+        println!("Restored {restored} original file(s), removed {removed} generated file(s).");
     }
 
     Ok(())
@@ -2932,6 +3232,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "export" => command_export(rest)?,
 
         "remove" => command_remove(&root, rest)?,
+
+        "deploy" => command_deploy(&root, rest)?,
+
+        "undeploy" => command_undeploy(&root, rest)?,
 
         "apply" => command_apply(&root, rest)?,
 

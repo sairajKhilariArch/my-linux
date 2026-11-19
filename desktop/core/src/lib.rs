@@ -17,11 +17,18 @@ pub use theme_engine::{
     render_theme_parts, render_theme_toml, validate_id,
 };
 
+pub mod deploy;
 pub mod log;
 pub mod paths;
 pub mod profile_apply;
 pub mod render;
 pub mod transaction;
+
+pub use deploy::{
+    BackupState, DeployAction, DeployEntry, DeployError, DeployReport, DeploymentStatus,
+    SkippedFile, UndeployAction, UndeployEntry, UndeployReport, default_config_dir, deploy,
+    deploy_status, live_relative_path, recover_deploy, resolve_config_dir, undeploy,
+};
 
 pub use profile_apply::{
     LAYOUT_RELATIVE_PATH, ProfileApplyError, ProfileApplyOptions, ProfileReport, apply_profile,

@@ -5,6 +5,59 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-11-19
+
+### Added
+
+- Safe live desktop deployment. `deploy` copies the installed generated files
+  into the live config directory (`$XDG_CONFIG_HOME`, otherwise `~/.config`, or
+  `--config-dir`), including the Waybar/Hyprland/Hyprlock destination mapping.
+  It requires explicit `--yes` authorization; without it the command prints the
+  plan and refuses to write.
+- Deployment ownership and recovery: every replaced file is backed up under
+  `<config-dir>/my-linux/deploy/backups/`, deployed paths and digests are
+  recorded in `deployed.tsv`, modified live files are conflicts unless `--force`
+  is passed, and an interrupted deployment is rolled back from `journal.tsv`.
+- `deploy --dry-run`, `deploy status`, and `undeploy --yes` with atomic
+  restoration of original files or removal of generated files that did not exist
+  before deployment. `deploy --reload` reloads detected applications.
+- GUI live-deployment controls in the Applications tab, guarded by an explicit
+  confirmation checkbox, force option and undeploy button.
+- A deployment journal and snapshots make deploy/undeploy failure-safe, matching
+  the existing apply transaction guarantees.
+- Firefox `userChrome.css` files are reported as skipped during deployment because
+  the active Firefox profile path is machine-specific.
+- A real GUI dashboard screenshot in `docs/screenshots/my-linux-dashboard.png`,
+  captured from the current binary against an isolated demonstration root.
+
+### Changed
+
+- Extension destinations can no longer target the reserved `my-linux/` directory,
+  which is used for extension settings and live-deployment state.
+- The roadmap and README now record live deployment as implemented, mark browser
+  styling and wallpaper profiles as complete, and list only the remaining
+  external/expansion work.
+- Workspace version 0.28.0; `PKGBUILD` `pkgver` follows it.
+
+### Tests
+
+- Core deployment: path mapping, dry runs, backup creation, theme switching,
+  conflict refusal and forced replacement, `deploy status`, and undeploy
+  restoration/removal.
+- CLI: deploy refuses without authorization, writes only after `--yes`, reports
+  status, and undeploys back to the original live file.
+
+### Limitations
+
+- The hosted marketplace server, additional desktop environments/distributions,
+  screenshots and additional application integrations remain external or
+  long-term expansion work.
+- Live deployment was tested against isolated temporary config directories; no
+  real `~/.config` was modified in this environment.
+- The GUI deployment controls were compiled and the dashboard was opened in a
+  graphical session; the deployment controls themselves were not individually
+  exercised through the GUI.
+
 ## [0.27.0] - 2026-11-19
 
 ### Added

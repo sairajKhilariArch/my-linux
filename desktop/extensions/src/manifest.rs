@@ -16,7 +16,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub const MANIFEST_FILE: &str = "extension.toml";
 
 /// Directories inside the installation root that extensions must never write to.
-const RESERVED_DIRECTORIES: [&str; 2] = ["state", "backups"];
+const RESERVED_DIRECTORIES: [&str; 3] = ["state", "backups", "my-linux"];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ExtensionFormat {

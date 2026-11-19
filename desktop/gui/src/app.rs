@@ -196,6 +196,8 @@ pub struct MyLinuxApp {
     edit_profile_integrations: String,
     edit_profile_dependencies: String,
     force_apply: bool,
+    live_deploy_confirm: bool,
+    force_live_deploy: bool,
     repository_location: String,
     replace_packages: bool,
     asset_font: String,
@@ -251,6 +253,8 @@ impl MyLinuxApp {
             edit_profile_integrations: String::new(),
             edit_profile_dependencies: String::new(),
             force_apply: false,
+            live_deploy_confirm: false,
+            force_live_deploy: false,
             repository_location: std::env::var("MY_LINUX_REPOSITORY").unwrap_or_default(),
             replace_packages: false,
             asset_font: String::new(),
@@ -1136,6 +1140,56 @@ impl MyLinuxApp {
             for path in changed {
                 ui.label(RichText::new(format!("  {path}")).small());
             }
+        }
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.heading("Live desktop deployment");
+        ui.label(
+            RichText::new(
+                "Copies the generated files into the live config directory (~/.config or \
+                 $XDG_CONFIG_HOME), backs up every replaced file and records what it owns. \
+                 Nothing outside the installation root is changed until you authorize it here.",
+            )
+            .small()
+            .weak(),
+        );
+        ui.checkbox(
+            &mut self.live_deploy_confirm,
+            "I understand that deploying writes to my live config directory",
+        );
+        ui.checkbox(
+            &mut self.force_live_deploy,
+            "Replace live files I edited outside My Linux (force)",
+        );
+
+        let mut deploy_live = false;
+        let mut undeploy_live = false;
+
+        ui.horizontal(|ui| {
+            deploy_live = ui
+                .add_enabled(
+                    self.live_deploy_confirm,
+                    egui::Button::new("Deploy to live config"),
+                )
+                .clicked();
+            undeploy_live = ui
+                .add_enabled(
+                    self.live_deploy_confirm,
+                    egui::Button::new("Undeploy from live config"),
+                )
+                .clicked();
+        });
+
+        if deploy_live {
+            let result = self.state.deploy_live(self.force_live_deploy);
+            self.outcome(result);
+        }
+
+        if undeploy_live {
+            let result = self.state.undeploy_live(self.force_live_deploy);
+            self.outcome(result);
         }
 
         ui.add_space(10.0);

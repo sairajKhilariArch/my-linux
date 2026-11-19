@@ -12,12 +12,16 @@
 **Development Branch:** main  
 **Project Type:** Independent Linux Desktop Customization Platform
 
-**Status:** Phases 1–11 complete (v0.17.0). The CLI and the native GUI manage
+**Status:** Phases 1–11 complete (v0.28.0). The CLI and the native GUI manage
 themes, integrations, wallpapers, assets, profiles and user extensions with
 transactions, rollback and diagnostics, and the platform installs, upgrades,
-verifies and uninstalls itself on Arch Linux. What remains is community hosting
-(theme repository and marketplace), which needs a server, plus the items listed
-as not implemented in the README.
+verifies and uninstalls itself on Arch Linux. Live deployment into the user's
+config directory is available as an explicit `deploy --yes` step with backups,
+conflict detection and `undeploy`. What remains is community hosting (theme
+marketplace server), additional desktop environments/distributions, and
+additional visual release artifacts. Hosting and extra environments need
+external infrastructure; a real dashboard screenshot is included, with more
+visual artifacts still outstanding.
 
 ---
 
@@ -895,6 +899,7 @@ For each integration:
 - [x] Restore.
 - [x] Reload handler.
 - [x] Integration tests.
+- [x] Explicit live destination mapping with authorization, backups and undeploy (v0.28.0).
 
 | Integration | Renderer | Validation | Reload | Tests |
 |---|---|---|---|---|
@@ -907,10 +912,12 @@ For each integration:
 | Launcher (`wofi/style.css`) | Yes | Yes | next launch | Yes |
 | Lock screen (`hyprlock/hyprlock.conf`) | Yes | Yes | next lock | Yes |
 
-**Status:** Complete (v0.10.0) for rendering and safe installation into the
-installation root. Writing directly into the live `~/.config` paths still needs
-the destination-mapping command plus explicit user authorization, so the live
-desktop is not modified automatically.
+**Status:** Complete (v0.28.0). Rendering and installation are safe inside the
+installation root, and live destinations are now mapped explicitly through
+`deploy`, which requires `--yes`, backs up every replaced file, records
+ownership, detects post-deployment edits, supports `--dry-run` and can
+`undeploy` back to the originals. The default `apply` path still never touches
+the live desktop.
 
 **Acceptance:** One theme applies consistently across the core desktop.
 
@@ -922,7 +929,7 @@ desktop is not modified automatically.
 - [x] GTK 4.
 - [x] Qt (qt6ct/qt5ct colour scheme).
 - [x] File manager (Yazi).
-- [ ] Browser styling where supported (no stable configuration format).
+- [x] Browser styling where supported (Firefox `userChrome.css`).
 - [x] Zsh prompt and completion colours.
 - [x] Editor integrations (Neovim).
 - [x] System monitors (Btop).
@@ -937,6 +944,7 @@ desktop is not modified automatically.
 | Neovim (`neovim`) | `nvim/lua/my-linux.lua` | API markers + balanced braces | next start | Yes |
 | Yazi (`yazi`) | `yazi/theme.toml` | sections + TOML parse | next start | Yes |
 | Btop (`btop`) | `btop/themes/my-linux.theme` | all keys quoted | next start | Yes |
+| Firefox (`firefox`) | `firefox/userChrome.css` | required browser selectors + balanced braces | Firefox restart | Yes |
 
 **Status:** Complete (v0.11.0). Every integration is a dedicated file that the
 user's own configuration imports, so none of them rewrites a live config.
@@ -950,7 +958,7 @@ user's own configuration imports, so none of them rewrites a live config.
 - [x] Wallpaper manager.
 - [x] Wallpaper library.
 - [x] Wallpaper preview (ANSI truecolor).
-- [ ] Wallpaper profiles (delivered with Phase 7 profiles).
+- [x] Wallpaper profiles (delivered with Phase 7 profiles).
 - [x] Palette extraction.
 - [x] Font management.
 - [x] Icon themes.
@@ -1028,7 +1036,7 @@ generated file, including the layout snippet.
 |---|---|
 | Tracked state | `state/active-theme`, `active-profile`, `profile-previous`, `wallpaper`, `installed.tsv`, `history.log`, `profile-history.log` |
 | Event log | `state/events.jsonl`, one JSON object per line, written by the core for apply, apply-failed, restore, rollback, profile, profile-failed, wallpaper and assets |
-| Commands | `status`, `current`, `logs`, `history`, `backup list`, `doctor`, `integrations list`, `integrations status`, `rollback` |
+| Commands | `status`, `current`, `logs`, `history`, `backup list`, `doctor`, `integrations list`, `integrations status`, `rollback`, `deploy`, `deploy status`, `undeploy` |
 | Integration status | detection result plus generated-file state per integration |
 | Doctor | themes, active theme/profile, interrupted journal, integrations, file modifications, backups, wallpaper, asset settings, event summary |
 
@@ -1083,7 +1091,8 @@ the build environment does not provide.
 - [x] Upgrade handling.
 - [x] Uninstaller.
 - [x] Documentation.
-- [ ] Screenshots and demonstrations.
+- [x] Dashboard screenshot in `docs/screenshots/my-linux-dashboard.png` (v0.28.0).
+- [ ] Additional screenshots and recorded demonstrations.
 - [x] Release testing.
 
 | Area | Implementation |
@@ -1104,7 +1113,8 @@ the build environment does not provide.
 throwaway prefix, running the installed binary, checking `install-status`, and
 uninstalling until zero program files remained. The release tarball script was
 syntax-checked; a full `--release` build was not run here. Screenshots of the
-packaged application remain outstanding because they need a graphical review.
+packaged application remain outstanding because they need a graphical session,
+and AUR publication is an external account/infrastructure step.
 
 **Acceptance:** Another Arch Linux user can install, configure, update and uninstall the platform safely.
 
@@ -1137,9 +1147,11 @@ packaged application remain outstanding because they need a graphical review.
 | Packaging | installed into `<prefix>/share/my-linux/extensions`, manifest-recorded, preserved on upgrade when edited, removed on uninstall |
 | Repository | `desktop/repository`: TOML index, local/git locations, search, install of themes and extensions, cache in `$XDG_CACHE_HOME/my-linux/repository` |
 
-**Status:** Complete (v0.17.0). Covered by 14 crate tests and 5 CLI
-end-to-end tests; the built-in extension was also enabled, applied with two
-themes and restored manually in an isolated root.
+**Status:** Complete (v0.17.0). Covered by crate tests and CLI end-to-end
+tests; the built-in extension was also enabled, applied with two themes and
+restored manually in an isolated root. Hosted marketplace infrastructure and
+additional desktop environments/distributions remain external or long-term
+expansion work.
 
 **Acceptance:** A developer can add an application integration without touching
 the Rust core, and a user can install, enable, apply, export and remove it safely.

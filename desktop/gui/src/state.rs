@@ -10,6 +10,7 @@ use desktop_core::assets::{
     read_settings, save_theme as save_wallpaper_theme, set_wallpaper, write_settings,
 };
 use desktop_core::config_manager::{digest_file, install_content};
+use desktop_core::deploy::{default_config_dir, deploy, undeploy};
 use desktop_core::extensions::{ExtensionRegistry, user_extensions_dir};
 use desktop_core::integrations;
 use desktop_core::log::{Event, read_events};
@@ -400,6 +401,33 @@ impl GuiState {
             "Applied {} to {} file(s).",
             theme.metadata.name,
             report.installed_files.len()
+        ))
+    }
+
+    /// Deploys the installed generated files into the live config directory.
+    pub fn deploy_live(&mut self, force: bool) -> Result<String, String> {
+        let config_dir = default_config_dir().map_err(|error| error.to_string())?;
+        let report =
+            deploy(&self.root, &config_dir, force, false).map_err(|error| error.to_string())?;
+
+        Ok(format!(
+            "Deployed {} file(s) to {} ({} skipped).",
+            report.changed(),
+            report.config_dir.display(),
+            report.skipped.len()
+        ))
+    }
+
+    /// Restores the files that were replaced by live deployment.
+    pub fn undeploy_live(&mut self, force: bool) -> Result<String, String> {
+        let config_dir = default_config_dir().map_err(|error| error.to_string())?;
+        let report =
+            undeploy(&self.root, &config_dir, force, false).map_err(|error| error.to_string())?;
+
+        Ok(format!(
+            "Restored or removed {} live file(s) in {}.",
+            report.entries.len(),
+            report.config_dir.display()
         ))
     }
 

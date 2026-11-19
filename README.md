@@ -9,10 +9,14 @@ The project does not depend on HyDE or any other rice framework.
 **Status:** Phases 1–11 are complete: foundation, production configuration
 management, the dynamic theme engine, the core Hyprland integrations, extended
 integrations, wallpapers and assets, desktop profiles, state/diagnostics, a
-native GUI, installation/packaging, and the extension ecosystem. Everything
-writes into an isolated *installation root* that you choose, so it never
-modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
+native GUI, installation/packaging, and the extension ecosystem. Applying a
+theme writes into an isolated *installation root* that you choose. A separate,
+explicitly authorized `deploy` command can then copy those generated files into
+the live config directory with backups and a matching `undeploy`. See
+[`docs/to-do.md`](docs/to-do.md) and
 [`CHANGELOG.md`](CHANGELOG.md).
+
+![My Linux dashboard](docs/screenshots/my-linux-dashboard.png)
 
 ## What works today
 
@@ -32,6 +36,7 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Modification detection and refusal to delete hand-edited files | Implemented |
 | Apply refuses to overwrite edited generated files unless `--force` is used | Implemented |
 | `status`, `current`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
+| Explicit live deployment with backups, conflict detection and undeploy | Implemented |
 | Structured event log, failure records, last-action reporting | Implemented |
 | Extension and repository health in `doctor` and the GUI | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
@@ -130,6 +135,12 @@ cargo build --workspace
 ./target/debug/my-linux-theme assets set --icon-theme Papirus --cursor-theme Bibata --cursor-size 28
 ./target/debug/my-linux-theme assets install ./Inter-Regular.ttf
 
+# Live desktop (writes only with --yes)
+./target/debug/my-linux-theme deploy --dry-run
+./target/debug/my-linux-theme deploy --yes --reload
+./target/debug/my-linux-theme deploy status
+./target/debug/my-linux-theme undeploy --yes
+
 # Profiles
 ./target/debug/my-linux-theme profile list
 ./target/debug/my-linux-theme profile info cyberpunk-developer
@@ -162,6 +173,43 @@ cargo build --workspace
 otherwise `target/theme-test`). `--integration <id>` limits an apply to the named
 integrations. `--reload` reloads running applications that are detected; without
 it no process is touched.
+
+## Live desktop deployment
+
+`apply` never writes outside the installation root. `deploy` is the explicit
+opt-in bridge to the live desktop:
+
+```bash
+my-linux-theme deploy --dry-run          # show every destination and conflict
+my-linux-theme deploy --yes --reload     # copy into the live config directory
+my-linux-theme deploy status             # show deployed and modified files
+my-linux-theme undeploy --yes            # restore originals or remove generated files
+```
+
+The config directory is `$XDG_CONFIG_HOME`, otherwise `~/.config`, or the value
+of `--config-dir`. Without `--yes`, `deploy` and `undeploy` only print the plan
+and refuse to write.
+
+| Generated file | Live destination |
+|---|---|
+| `waybar.css` | `waybar/style.css` |
+| `hyprland/my-linux.conf` | `hypr/my-linux.conf` |
+| `hyprland/layout.conf`, `hyprland/assets.conf` | `hypr/layout.conf`, `hypr/assets.conf` |
+| `hyprlock/hyprlock.conf` | `hypr/hyprlock.conf` |
+| every other integration | the same relative path under the config directory |
+| `firefox/userChrome.css` | skipped; each Firefox profile has a different `chrome/` path |
+
+Every replaced file is copied to `~/.config/my-linux/deploy/backups/` before it
+is overwritten. The deployment state is kept in
+`~/.config/my-linux/deploy/deployed.tsv`, making `undeploy` independent of the
+installation root. A file edited after deployment is a conflict; deploy refuses
+to replace it unless `--force` is passed. An interrupted deployment is rolled
+back from `journal.tsv` on the next command.
+
+Some snippets still need an include in the application's own configuration, for
+example `source = ~/.config/hypr/my-linux.conf` in Hyprland and
+`include ~/.config/kitty/my-linux.conf` in Kitty. Deployment copies the generated
+files; it does not rewrite the host configuration files.
 
 ## Integrations
 
@@ -552,6 +600,9 @@ through the extension registry, and an existing installation needs `--force`.
   validate, journal, back up, install atomically, commit — or roll back.
 - A failed or interrupted operation never leaves a half-themed desktop; the
   journal is replayed on the next command.
+- Live deployment is a separate command: it requires `--yes`, backs up every
+  replaced file, records what it owns, refuses to overwrite files changed after
+  deployment unless forced, and can restore the originals with `undeploy`.
 - The first original configuration of each file is backed up once and never
   replaced. Files that My Linux generated are never mistaken for user originals.
 - Replacing a configuration keeps its file permissions; symlinked destinations

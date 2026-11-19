@@ -514,6 +514,70 @@ fn backup_list_shows_the_original_backup() {
 }
 
 #[test]
+fn deploy_requires_authorization_and_can_be_undeployed() {
+    let root = TempRoot::new("deploy");
+    let config =
+        std::env::temp_dir().join(format!("my-linux-cli-{}-deploy-config", std::process::id()));
+    let _ = fs::remove_dir_all(&config);
+
+    fs::create_dir_all(config.join("waybar")).unwrap();
+    fs::write(config.join("waybar/style.css"), "original waybar").unwrap();
+
+    root.write("waybar.css", ORIGINAL);
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+
+    let config_arg = config.to_string_lossy().to_string();
+    let denied = run(root.path(), &["deploy", "--config-dir", &config_arg]);
+    assert!(!denied.status.success());
+    assert!(stderr(&denied).contains("explicit authorization"));
+    assert_eq!(
+        fs::read_to_string(config.join("waybar/style.css")).unwrap(),
+        "original waybar"
+    );
+
+    let dry = run(
+        root.path(),
+        &["deploy", "--config-dir", &config_arg, "--dry-run"],
+    );
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    assert!(stdout(&dry).contains("Dry run"));
+    assert_eq!(
+        fs::read_to_string(config.join("waybar/style.css")).unwrap(),
+        "original waybar"
+    );
+
+    let deployed = run(
+        root.path(),
+        &["deploy", "--config-dir", &config_arg, "--yes"],
+    );
+    assert!(deployed.status.success(), "{}", stderr(&deployed));
+    assert!(
+        fs::read_to_string(config.join("waybar/style.css"))
+            .unwrap()
+            .contains("@define-color")
+    );
+
+    let status = run(
+        root.path(),
+        &["deploy", "status", "--config-dir", &config_arg],
+    );
+    assert!(stdout(&status).contains("deployed"));
+
+    let undeployed = run(
+        root.path(),
+        &["undeploy", "--config-dir", &config_arg, "--yes"],
+    );
+    assert!(undeployed.status.success(), "{}", stderr(&undeployed));
+    assert_eq!(
+        fs::read_to_string(config.join("waybar/style.css")).unwrap(),
+        "original waybar"
+    );
+    assert!(!config.join("dunst/dunstrc").exists());
+
+    fs::remove_dir_all(config).unwrap();
+}
+
+#[test]
 fn bump_raises_a_theme_version() {
     let root = TempRoot::new("theme-bump");
     let user_themes = root.join("user-themes");
