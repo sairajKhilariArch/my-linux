@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "config-manager"
-version = "0.15.0"
+version = "0.17.0"
 
 [[package]]
 name = "core-foundation"
@@ -361,7 +361,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "desktop-assets"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "config-manager",
  "image",
@@ -370,22 +370,42 @@ dependencies = [
 
 [[package]]
 name = "desktop-components"
-version = "0.15.0"
+version = "0.17.0"
 
 [[package]]
 name = "desktop-core"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "config-manager",
  "desktop-assets",
+ "desktop-extensions",
  "desktop-integrations",
  "desktop-profiles",
  "theme-engine",
 ]
 
 [[package]]
+name = "desktop-extensions"
+version = "0.17.0"
+dependencies = [
+ "config-manager",
+ "serde",
+ "theme-engine",
+ "toml",
+]
+
+[[package]]
+name = "desktop-installer"
+version = "0.17.0"
+dependencies = [
+ "desktop-core",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "desktop-integrations"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "theme-engine",
  "toml",
@@ -393,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-profiles"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "desktop-integrations",
  "serde",
@@ -1208,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "my-linux-gui"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "desktop-core",
  "eframe",
@@ -1216,10 +1236,11 @@ dependencies = [
 
 [[package]]
 name = "my-linux-theme"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "desktop-assets",
  "desktop-core",
+ "desktop-installer",
  "theme-engine",
 ]
 
@@ -2160,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "theme-engine"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "serde",
  "toml",

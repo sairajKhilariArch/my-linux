@@ -6,6 +6,7 @@ use config_manager::{ConfigError, backup_file, install_content};
 
 pub use config_manager;
 pub use desktop_assets as assets;
+pub use desktop_extensions as extensions;
 pub use desktop_integrations as integrations;
 pub use desktop_integrations::{Integration, IntegrationStatus};
 pub use desktop_profiles as profiles;
@@ -16,6 +17,7 @@ pub use theme_engine::{
 };
 
 pub mod log;
+pub mod paths;
 pub mod profile_apply;
 pub mod render;
 pub mod transaction;

@@ -1,0 +1,20 @@
+# Built-in example extension: SwayNC notification centre styling.
+#
+# Extensions are ordinary user content: a manifest plus a template that is
+# rendered from the central theme palette. Enable it with:
+#   my-linux-theme extensions enable swaync
+# then every `my-linux-theme apply <theme>` also writes this stylesheet.
+
+[extension]
+schema = 1
+id = "swaync"
+name = "SwayNC"
+version = "1.0.0"
+description = "Notification centre styling matching the active My Linux theme."
+author = "My Linux"
+format = "css"
+destination = "swaync/style.css"
+template = "template.css"
+programs = ["swaync"]
+
+reload = [["swaync-client", "--reload-css"]]

@@ -6,12 +6,12 @@ format of every supported desktop application.
 
 The project does not depend on HyDE or any other rice framework.
 
-**Status:** Phases 1–9 are complete: foundation, production configuration
+**Status:** Phases 1–11 are complete: foundation, production configuration
 management, the dynamic theme engine, the core Hyprland integrations, extended
-integrations, wallpapers and assets, desktop profiles, state/diagnostics, and a
-native GUI. Everything writes into an isolated *installation root* that you
-choose, so it never touches your live `~/.config` yet. Packaging and the
-extension ecosystem remain — see [`docs/to-do.md`](docs/to-do.md) and
+integrations, wallpapers and assets, desktop profiles, state/diagnostics, a
+native GUI, installation/packaging, and the extension ecosystem. Everything
+writes into an isolated *installation root* that you choose, so it never
+modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What works today
@@ -37,7 +37,10 @@ extension ecosystem remain — see [`docs/to-do.md`](docs/to-do.md) and
 | Font, icon-theme and cursor-theme discovery and settings | Implemented |
 | Desktop profiles, presets, per-profile wallpapers, profile switching | Implemented |
 | Native GUI: dashboard, gallery, editor, applications, wallpapers, profiles, recovery | Implemented |
-| Packaging and release | Not implemented |
+| Installation, upgrade, uninstall and verification | Implemented |
+| User extensions: manifest, template, discovery, import/export, enable state | Implemented |
+| Community theme and extension repositories, marketplace | Not implemented |
+| Arch PKGBUILD, desktop entry, icon and release tarballs | Implemented |
 
 ## Build and verify
 
@@ -50,6 +53,32 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Unit tests cover every crate; `desktop/cli/tests/cli.rs` runs the binary end to
 end in temporary roots and user theme directories.
+
+## Installation
+
+```bash
+# Build and install into ~/.local (both binaries, themes, profiles, desktop entry)
+./packaging/install.sh
+
+# Or build a release tarball and install from it
+./packaging/build-release.sh
+./target/release/my-linux-theme install --source dist/my-linux-<version>-<arch>
+```
+
+`install` records every file with a digest in
+`~/.local/share/my-linux/install-manifest.toml`, then verifies it. `install-status`
+rechecks the files and reports whether an upgrade is available; `upgrade` replaces
+the binaries and replaces built-in themes/profiles only when they are unmodified
+(anything you edited is preserved and reported); `uninstall` removes the recorded
+program files and keeps user themes, user profiles, state and original
+configuration backups.
+
+All three accept `--prefix <dir>` and `--dry-run`; `install` and `upgrade` also
+accept `--source <release directory>` and `--force`. Installed binaries find their
+themes and profiles in `<prefix>/share/my-linux` at runtime.
+
+Arch packaging is in `packaging/PKGBUILD`; it installs the same binaries,
+`/usr/share/my-linux/{themes,profiles}`, the desktop entry and the icon.
 
 ## Command line
 
@@ -105,6 +134,17 @@ cargo build --workspace
 ./target/debug/my-linux-theme profile restore
 ./target/debug/my-linux-theme profile export my-desktop ./my-desktop.toml
 ./target/debug/my-linux-theme profile remove my-desktop
+
+# Extensions
+./target/debug/my-linux-theme extensions list
+./target/debug/my-linux-theme extensions info swaync
+./target/debug/my-linux-theme extensions enable swaync
+./target/debug/my-linux-theme extensions render swaync --theme cyberpunk
+./target/debug/my-linux-theme extensions create my-widget --format css --destination my-widget/style.css
+./target/debug/my-linux-theme extensions export my-widget ./packages
+./target/debug/my-linux-theme extensions import ./packages/my-widget --as my-widget-copy
+./target/debug/my-linux-theme extensions disable swaync
+./target/debug/my-linux-theme extensions remove my-widget
 ```
 
 `--root <directory>` picks the installation root (default `$MY_LINUX_ROOT`,
@@ -318,6 +358,44 @@ Validation rules:
 - `extends` must name an existing theme; cycles are rejected.
 - Invalid themes are listed by `list` and reported by `doctor`.
 
+## Extensions
+
+An extension adds a third-party application integration without changing the
+Rust core. An extension is a directory with a manifest and a template:
+
+```text
+~/.config/my-linux/extensions/my-widget/
+├── extension.toml
+└── template.css
+```
+
+```toml
+[extension]
+schema = 1
+id = "my-widget"
+name = "My Widget"
+version = "1.0.0"
+description = "Styling for my widget daemon"
+format = "css"                 # toml | css | rasi | ini | text
+destination = "my-widget/style.css"
+template = "template.css"
+programs = ["my-widget-daemon"]
+reload = [["my-widget-daemon", "--reload"]]
+```
+
+The template is rendered from the central palette: `{{colors.background}}`,
+`{{colors.primary}}`, `{{colors.active}}`, `{{theme.name}}`, `{{theme.id}}` and
+the rest of the theme colours. Unknown placeholders, unsafe destinations (`..`,
+absolute paths, the `state/` and `backups/` directories) and output that does
+not parse in the declared format are rejected before anything is written.
+
+`extensions enable <id>` records the extension in
+`~/.config/my-linux/extensions.toml`; every later `apply` renders it into the
+same transaction as the built-in integrations, so it is backed up, rolled back
+and restored like any other generated file. `swaync` ships as a built-in
+example. Extensions are ordinary content: `extensions create` writes a starter
+template, and `extensions import`/`export` move a directory between machines.
+
 ## Installation root layout
 
 ```text
@@ -374,10 +452,14 @@ desktop/
 ├── integrations/    # one renderer per application (thirteen integrations)
 ├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
 ├── profiles/        # profile schema, registry and profile application
+├── extensions/      # extension manifest, template rendering and registry
+├── installer/       # install, upgrade, verify, uninstall and the manifest
 ├── gui/             # native graphical application (eframe)
 ├── components/      # shared desktop components (placeholder)
 └── cli/             # the my-linux-theme binary and its integration tests
+packaging/           # PKGBUILD, desktop entry, icon, install and release scripts
 themes/              # built-in theme definitions
+extensions/          # built-in example extensions
 configs/             # reference configuration templates
 docs/                # product roadmap
 ```

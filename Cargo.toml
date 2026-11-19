@@ -8,11 +8,13 @@ members = [
     "desktop/config-manager",
     "desktop/integrations",
     "desktop/assets",
+    "desktop/extensions",
     "desktop/profiles",
+    "desktop/installer",
     "desktop/gui",
     "desktop/cli",
 ]
 
 [workspace.package]
-version = "0.15.0"
+version = "0.17.0"
 edition = "2024"

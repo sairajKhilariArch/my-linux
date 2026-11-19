@@ -5,6 +5,85 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-11-19
+
+### Added
+
+- New `desktop/extensions` crate: third-party application integrations defined
+  entirely in data. An extension is a directory with an `extension.toml`
+  manifest and a template rendered from the central theme palette.
+- Manifest schema v1 with `id`, `name`, `version`, `description`, `format`,
+  `destination`, `template`, `programs` and `reload` commands. Validation rejects
+  schema mismatches, id/directory mismatches, empty metadata, invalid versions,
+  unknown formats, absolute or `..` destinations, destinations inside the
+  `state/` and `backups/` directories, and templates outside the extension.
+- Template rendering for `{{colors.<name>}}` (all fourteen palette colours),
+  `{{theme.id}}`, `{{theme.name}}`, `{{theme.version}}`, `{{theme.description}}`
+  and `{{theme.author}}`. Unknown, empty or unterminated placeholders are errors.
+- Output validation per declared format: TOML is parsed, CSS and RASI must have
+  balanced braces, INI and text must not be empty.
+- Discovery from a built-in directory and `$XDG_CONFIG_HOME/my-linux/extensions`
+  (`MY_LINUX_USER_EXTENSIONS` overrides it), user extensions shadowing built-ins
+  with the same id, and broken extensions reported without breaking the listing.
+- Enabled state in `extensions.toml` next to the user root. Enabled extensions are
+  rendered into the same transaction as the built-in integrations, so their files
+  are journalled, backed up, rolled back and restored like any other generated
+  file, and two extensions writing the same destination is refused.
+- `extensions list|info|render|create|import|export|remove|enable|disable|status`
+  and `extensions apply <theme>`. `apply` and `wallpaper palette --apply` now also
+  write enabled extensions and report them.
+- Built-in example extension `extensions/swaync` producing `swaync/style.css` with
+  a `swaync-client --reload-css` reload command.
+- The installer now installs built-in extensions into
+  `<prefix>/share/my-linux/extensions`, records them in the manifest, preserves
+  user-modified copies on upgrade and removes them on uninstall. `packaging/install.sh`,
+  `packaging/build-release.sh` and the `PKGBUILD` ship the extension directory.
+- 14 extension unit tests (manifest validation, rendering, registry discovery,
+  enable state, import/export/remove, scaffolding) and 5 CLI end-to-end tests.
+
+### Changed
+
+- Workspace version 0.17.0; `PKGBUILD` `pkgver` follows the workspace version.
+- Phase 11 (extension ecosystem) is complete apart from community hosting
+  (theme repository and marketplace), which needs a server that is out of scope.
+
+## [0.16.0] - 2026-11-19
+
+### Added
+
+- New `desktop/installer` crate with install, upgrade, verify and uninstall
+  operations, a versioned manifest, host detection and a dependency report.
+- `install [--prefix <dir>] [--source <dir>] [--force] [--dry-run]` copies both
+  binaries, built-in themes, built-in profiles, a desktop entry and the icon into
+  a prefix (default `~/.local`), then verifies every copied file.
+- `install-manifest.toml` records the version, platform, install time and a
+  digest for every installed file.
+- `install-status [--prefix <dir>]` shows the installed version, verifies all
+  files against their digests and reports whether an upgrade is available.
+- `upgrade [--prefix <dir>] [--dry-run]` replaces binaries and only replaces
+  built-in themes/profiles whose digest still matches the manifest; content the
+  user edited is preserved and reported.
+- `uninstall [--prefix <dir>] [--dry-run]` removes exactly the recorded program
+  files and never touches user themes, user profiles, state or original
+  configuration backups.
+- Host detection from `/etc/os-release` plus architecture and session, and a
+  runtime dependency report covering every integration, `hyprctl` and `pacman`.
+- Installed binaries now resolve their shipped themes and profiles at runtime
+  (`<prefix>/share/my-linux`, `MY_LINUX_DATA_DIR`, `MY_LINUX_THEMES_DIR`,
+  `MY_LINUX_PROFILES_DIR`), so an installation no longer depends on the build
+  tree.
+- Packaging: `packaging/PKGBUILD`, `packaging/my-linux.desktop`,
+  `packaging/my-linux.svg`, `packaging/install.sh` (build and install from a
+  checkout) and `packaging/build-release.sh` (release tarball).
+- 9 installer tests (install, upgrade preservation, uninstall, verification,
+  dry run, refusal cases) and 2 CLI end-to-end tests.
+
+### Changed
+
+- The CLI gained the installation command group; the desktop entry is generated
+  with the absolute GUI path so it works from any prefix.
+- Phase 10 of the roadmap is complete.
+
 ## [0.15.0] - 2026-11-19
 
 ### Added

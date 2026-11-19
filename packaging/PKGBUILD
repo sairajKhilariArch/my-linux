@@ -1,0 +1,55 @@
+# Maintainer: My Linux <maintainers@example.com>
+pkgname=my-linux
+pkgver=0.17.0
+pkgrel=1
+pkgdesc="Independent desktop customisation platform for Hyprland and friends"
+arch=('x86_64' 'aarch64')
+url="https://github.com/sairajKhilariArch/my-linux"
+license=('custom')
+depends=('gcc-libs' 'glibc')
+makedepends=('cargo' 'rust')
+optdepends=(
+  'hyprland: window manager integration and reload'
+  'waybar: status bar integration'
+  'rofi: launcher integration'
+  'kitty: terminal integration'
+  'dunst: notification integration'
+  'hyprlock: lock screen integration'
+  'swww: wallpaper switching'
+  'hyprpaper: wallpaper switching'
+  'gtk3: GTK 3 theming'
+  'gtk4: GTK 4 theming'
+  'qt6ct: Qt theming'
+)
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --locked --workspace
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 target/release/my-linux-theme "$pkgdir/usr/bin/my-linux-theme"
+  install -Dm755 target/release/my-linux-gui "$pkgdir/usr/bin/my-linux-gui"
+
+  install -dm755 "$pkgdir/usr/share/my-linux"
+  cp -r themes "$pkgdir/usr/share/my-linux/themes"
+  cp -r profiles "$pkgdir/usr/share/my-linux/profiles"
+  cp -r extensions "$pkgdir/usr/share/my-linux/extensions"
+
+  install -Dm644 packaging/my-linux.desktop \
+    "$pkgdir/usr/share/applications/my-linux.desktop"
+  install -Dm644 packaging/my-linux.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/my-linux.svg"
+
+  install -Dm644 README.md "$pkgdir/usr/share/doc/my-linux/README.md"
+  install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/my-linux/CHANGELOG.md"
+
+  if [[ -f LICENSE ]]; then
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/my-linux/LICENSE"
+  fi
+}

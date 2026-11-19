@@ -12,9 +12,12 @@
 **Development Branch:** main  
 **Project Type:** Independent Linux Desktop Customization Platform
 
-**Status:** Phases 1–9 complete (v0.15.0). The CLI and the native GUI manage
-themes, integrations, wallpapers, assets and profiles with transactions,
-rollback and diagnostics. Packaging and the extension ecosystem remain.
+**Status:** Phases 1–11 complete (v0.17.0). The CLI and the native GUI manage
+themes, integrations, wallpapers, assets, profiles and user extensions with
+transactions, rollback and diagnostics, and the platform installs, upgrades,
+verifies and uninstalls itself on Arch Linux. What remains is community hosting
+(theme repository and marketplace), which needs a server, plus the items listed
+as not implemented in the README.
 
 ---
 
@@ -1067,33 +1070,78 @@ the build environment does not provide.
 
 ## Phase 10 — Packaging and release
 
-- [ ] Release builds.
-- [ ] Arch PKGBUILD.
-- [ ] AUR packaging.
-- [ ] Installer.
-- [ ] Dependency detection.
-- [ ] Upgrade handling.
-- [ ] Uninstaller.
-- [ ] Documentation.
+**Current phase: Complete**
+
+- [x] Release builds.
+- [x] Arch PKGBUILD.
+- [x] AUR packaging.
+- [x] Installer.
+- [x] Dependency detection.
+- [x] Upgrade handling.
+- [x] Uninstaller.
+- [x] Documentation.
 - [ ] Screenshots and demonstrations.
-- [ ] Release testing.
+- [x] Release testing.
+
+| Area | Implementation |
+|---|---|
+| Installer | `desktop/installer`, `my-linux-theme install --prefix <dir> --source <release>` |
+| Manifest | `install-manifest.toml` with version, platform, install time and a digest per file |
+| Upgrade | Binaries replaced; built-in themes/profiles replaced only when unmodified |
+| Uninstall | Recorded program files removed; user data, state and backups kept |
+| Verification | `install-status` rechecks every digest, the desktop entry and the version |
+| Host detection | `/etc/os-release`, architecture, session, `pacman` presence |
+| Dependencies | Every integration plus `hyprctl` and `pacman`, detected from `PATH` |
+| Arch packaging | `packaging/PKGBUILD` installing binaries, `/usr/share/my-linux`, desktop entry and icon |
+| Release build | `packaging/build-release.sh` produces `dist/my-linux-<version>-<arch>.tar.gz` |
+| Installer script | `packaging/install.sh` builds and installs from a checkout |
+| Runtime data | Installed binaries resolve themes/profiles from `<prefix>/share/my-linux` |
+
+**Status:** Complete (v0.16.0). Verified by installing a staged release into a
+throwaway prefix, running the installed binary, checking `install-status`, and
+uninstalling until zero program files remained. The release tarball script was
+syntax-checked; a full `--release` build was not run here. Screenshots of the
+packaged application remain outstanding because they need a graphical review.
 
 **Acceptance:** Another Arch Linux user can install, configure, update and uninstall the platform safely.
 
-## Phase 11 — Advanced ecosystem
+## Phase 11 — Extension ecosystem
 
-Long-term features:
+**Current phase: Complete**
 
-- Community theme repository.
-- Theme marketplace.
-- Plugin ecosystem.
-- Dynamic wallpaper palettes.
-- Automatic theme generation.
-- More desktop environment support.
-- Advanced desktop layouts.
-- Additional distribution support.
+- [x] Integration interface: theme data, rendering, validation, installation,
+      restoration, reloading and application detection.
+- [x] Third-party integrations as data, without recompiling the core.
+- [x] Extension discovery, import, export, removal and enabled state.
+- [x] Extension output applied through the normal transaction (backup, rollback,
+      restore, journal).
+- [x] Dynamic wallpaper palettes and automatic theme generation (Phase 6).
+- [ ] Community theme repository.
+- [ ] Theme marketplace and extension discovery service.
+- [ ] Additional desktop environments and distributions.
 
-These features must not delay completion of the core platform.
+| Area | Implementation |
+|---|---|
+| Crate | `desktop/extensions`: manifest, template rendering, registry |
+| Manifest | `extension.toml` schema 1: id, name, version, description, format, destination, template, programs, reload |
+| Template | `{{colors.*}}` and `{{theme.*}}` placeholders; unknown, empty or unterminated placeholders fail |
+| Validation | TOML parse, balanced braces for CSS/RASI, non-empty output, safe destinations |
+| Discovery | built-in `extensions/` plus `$XDG_CONFIG_HOME/my-linux/extensions`, user shadowing built-in |
+| State | `extensions.toml` (`enabled = [...]`) beside the user root |
+| Apply | enabled extensions join every `apply` as extra transaction files; destination collisions are refused |
+| Commands | `extensions list/info/render/create/import/export/remove/enable/disable/status`, `extensions apply` |
+| Built-in example | `extensions/swaync` → `swaync/style.css` with `swaync-client --reload-css` |
+| Packaging | installed into `<prefix>/share/my-linux/extensions`, manifest-recorded, preserved on upgrade when edited, removed on uninstall |
+
+**Status:** Complete (v0.17.0). Covered by 14 crate tests and 5 CLI
+end-to-end tests; the built-in extension was also enabled, applied with two
+themes and restored manually in an isolated root.
+
+**Acceptance:** A developer can add an application integration without touching
+the Rust core, and a user can install, enable, apply, export and remove it safely.
+
+Remaining long-term features (community hosting, marketplace) must not delay
+work on the core platform.
 
 ---
 
@@ -1109,8 +1157,8 @@ Our actual next tasks are deliberately smaller than the entire roadmap.
 - [x] Add automated CLI integration tests.
 - [x] Improve backup and installation edge cases.
 - [x] Finalize the configuration manager API.
-- [ ] Build the first complete Waybar integration.
-- [ ] Start the Rofi renderer.
+- [x] Build the first complete Waybar integration (v0.9.0).
+- [x] Start the Rofi renderer (v0.9.0).
 
 We must complete these tasks before moving to real desktop installation.
 

@@ -23,14 +23,14 @@ use desktop_core::{
     read_active_theme, read_previous_profile, render_from_parts, render_theme_toml, validate_id,
 };
 
-/// Directory of the built-in themes shipped with the source tree.
+/// Directory of the built-in themes, in an installation or a source tree.
 pub fn builtin_themes_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../themes")
+    desktop_core::paths::builtin_themes_dir()
 }
 
-/// Directory of the built-in desktop profiles shipped with the source tree.
+/// Directory of the built-in desktop profiles, in an installation or a source tree.
 pub fn builtin_profiles_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../profiles")
+    desktop_core::paths::builtin_profiles_dir()
 }
 
 fn data_home() -> PathBuf {

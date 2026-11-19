@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=My Linux
+GenericName=Desktop Customization
+Comment=Themes, profiles, wallpapers and desktop configuration
+Exec=/usr/bin/my-linux-gui
+Icon=my-linux
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=theme;hyprland;desktop;wallpaper;profile;
+StartupNotify=true

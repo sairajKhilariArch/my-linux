@@ -1,0 +1,9 @@
+[package]
+name = "desktop-installer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+desktop-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"

@@ -1,9 +1,10 @@
 use desktop_core::{
     Color, Registry, ThemeMetadata,
     config_manager::install_content,
+    extensions::{ExtensionFormat, ExtensionRegistry, user_extensions_dir},
     generate_palette, integrations, read_active_theme, render_from_parts, render_theme_toml,
     transaction::{
-        FileState, WAYBAR_RELATIVE_PATH, apply_theme_with, destination, detect_modifications,
+        FileState, WAYBAR_RELATIVE_PATH, apply_theme_with_extra, destination, detect_modifications,
         diagnose, format_timestamp, installed_entries, original_backup, read_history,
         restore_theme, rollback_theme,
     },
@@ -19,6 +20,10 @@ use desktop_core::log::{Level, append_event, last_event, read_events};
 use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::{read_active_profile, read_previous_profile};
+use desktop_installer::{
+    InstallLayout, InstallOptions, default_prefix, dependency_report, detect_environment, install,
+    install_status, uninstall, upgrade,
+};
 
 use std::env;
 use std::fs;
@@ -100,6 +105,22 @@ Profile commands:
   profile restore          Apply the previously active profile
   profile current          Show the active and previous profiles
 
+Extension commands:
+  extensions list          List built-in and user extensions
+  extensions info <id>     Show an extension's manifest and template
+  extensions render <id> [--theme <theme>]
+                           Print an extension's generated configuration
+  extensions create <id> [--name <name>] [--destination <path>] [--format <fmt>]
+                           Create a user extension from a template
+  extensions import <path> [--as <id>]
+                           Install an extension directory
+  extensions export <id> [directory]
+                           Copy an extension out as a portable directory
+  extensions remove <id>   Remove a user extension
+  extensions enable <id>   Apply the extension with every theme
+  extensions disable <id>  Stop applying the extension
+  extensions status        Show enabled extensions and application detection
+
 State commands:
   current                  Show the active theme, profile, wallpaper and assets
   logs [--limit <n>]       Show the structured event log
@@ -109,9 +130,21 @@ Recovery commands:
   history                  Show the installation history
   doctor                   Diagnose the installation
 
+Installation commands:
+  install [--prefix <dir>] [--source <dir>] [--force] [--dry-run]
+                           Install both binaries, themes, profiles and a desktop entry
+  upgrade [--prefix <dir>] [--dry-run]
+                           Replace program files, preserving modified content
+  uninstall [--prefix <dir>] [--dry-run]
+                           Remove installed program files and keep your data
+  install-status [--prefix <dir>]
+                           Show the installed version and verify every file
+
 Options:
   --root <directory>       Directory that receives generated configurations
                            (default: $MY_LINUX_ROOT, otherwise target/theme-test)
+  --prefix <directory>     Where install/upgrade/uninstall place program files
+                           (default: $MY_LINUX_PREFIX, otherwise ~/.local)
   -h, --help               Show this help
 
 User themes live in $MY_LINUX_USER_THEMES, otherwise
@@ -127,7 +160,7 @@ fn main() {
 
 /// Built-in themes are read from the source tree during development.
 fn builtin_themes_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../themes")
+    desktop_core::paths::builtin_themes_dir()
 }
 
 fn user_themes_dir() -> PathBuf {
@@ -145,6 +178,11 @@ fn user_themes_dir() -> PathBuf {
 
 fn registry() -> Registry {
     Registry::with_user(builtin_themes_dir(), user_themes_dir())
+}
+
+/// Theme registry under a name that cannot be shadowed by a local binding.
+fn theme_registry() -> Registry {
+    registry()
 }
 
 fn default_root() -> PathBuf {
@@ -435,6 +473,276 @@ fn command_remove(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+/// Extensions shipped with My Linux plus the user's own extensions.
+fn extension_registry() -> ExtensionRegistry {
+    ExtensionRegistry::new(
+        desktop_core::paths::builtin_extensions_dir(),
+        user_extensions_dir(),
+    )
+}
+
+fn command_extensions(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let registry = extension_registry();
+    let subcommand = rest.first().map(String::as_str).unwrap_or("list");
+    let arguments = rest.get(1..).unwrap_or(&[]);
+
+    match subcommand {
+        "list" => {
+            let discovery = registry.list();
+
+            if discovery.extensions.is_empty() {
+                println!(
+                    "No extensions found in {} or {}.",
+                    registry.user_root().display(),
+                    registry.builtin_root().display()
+                );
+            } else {
+                println!("Extensions:");
+
+                for summary in &discovery.extensions {
+                    println!(
+                        "  {} {:<14} {:<10} {:<8} {}",
+                        if summary.enabled { "*" } else { " " },
+                        summary.id,
+                        summary.format,
+                        summary.source.label(),
+                        summary.description
+                    );
+                    println!("      writes: {}", summary.destination);
+
+                    if !summary.programs.is_empty() {
+                        println!("      programs: {}", summary.programs.join(", "));
+                    }
+                }
+            }
+
+            for broken in &discovery.broken {
+                println!("Warning:  {}: {}", broken.path.display(), broken.error);
+            }
+
+            let enabled = registry.enabled()?;
+
+            println!();
+            println!(
+                "Enabled: {}",
+                if enabled.is_empty() {
+                    "none (enable one with `extensions enable <id>`)".to_string()
+                } else {
+                    enabled.join(", ")
+                }
+            );
+        }
+
+        "info" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions info <id>")?;
+            let extension = registry.load(id)?;
+            let metadata = &extension.metadata;
+
+            println!("{}", metadata.name);
+            println!("  id:          {}", metadata.id);
+            println!("  version:     {}", metadata.version);
+            println!("  schema:      {}", metadata.schema);
+            println!("  description: {}", metadata.description);
+
+            if let Some(author) = &metadata.author {
+                println!("  author:      {author}");
+            }
+
+            println!("  format:      {}", metadata.format.label());
+            println!("  destination: {}", metadata.destination);
+            println!("  template:    {}", metadata.template);
+            println!("  path:        {}", extension.directory.display());
+
+            if !metadata.programs.is_empty() {
+                println!("  programs:    {}", metadata.programs.join(", "));
+            }
+
+            for command in &metadata.reload {
+                println!("  reload:      {}", command.join(" "));
+            }
+
+            println!(
+                "  enabled:     {}",
+                if registry.enabled()?.contains(&metadata.id) {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+        }
+
+        "render" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions render <id> [--theme <theme>]")?;
+            let theme_id = match value_of(arguments, "--theme") {
+                Some(theme) => theme.to_string(),
+                None => read_active_theme(root)
+                    .ok_or("No active theme; pass --theme <theme> to render an extension")?,
+            };
+            let theme = theme_registry().load(&theme_id)?;
+            let generated = extension_registry().render(id, &theme)?;
+
+            print!("{}", generated.content);
+        }
+
+        "create" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions create <id> [--name <name>] [--destination <path>] [--format <fmt>]")?;
+            let name = value_of(arguments, "--name")
+                .map(str::to_string)
+                .unwrap_or_else(|| display_name(id));
+            let destination = value_of(arguments, "--destination")
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("{id}/{id}.conf"));
+            let format = match value_of(arguments, "--format") {
+                Some(value) => ExtensionFormat::parse(value).ok_or_else(|| {
+                    format!("Unknown format `{value}`: use toml, css, rasi, ini or text")
+                })?,
+                None => ExtensionFormat::Text,
+            };
+
+            let directory = registry.scaffold(id, &name, &destination, format)?;
+
+            println!("Extension created: {id}");
+            println!("Directory:        {}", directory.display());
+            println!("Destination:      {destination}");
+            println!("Format:           {}", format.label());
+            println!();
+            println!(
+                "Edit {0}, then run `my-linux-theme extensions render {1} --theme cyberpunk`.",
+                directory.join("extension.toml").display(),
+                id
+            );
+        }
+
+        "import" => {
+            let source = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions import <path> [--as <id>]")?;
+            let id = value_of(arguments, "--as");
+            let directory = registry.import(source, id)?;
+
+            println!("Extension installed: {}", directory.display());
+        }
+
+        "export" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions export <id> [directory]")?;
+            let destination = arguments.get(1).map(String::as_str).unwrap_or(".");
+            let directory = registry.export(id, destination)?;
+
+            println!("Extension exported: {}", directory.display());
+        }
+
+        "remove" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions remove <id>")?;
+            let directory = registry.remove(id)?;
+
+            println!("Extension removed: {id}");
+            println!("Removed: {}", directory.display());
+
+            let active = read_active_theme(root);
+
+            if active.is_some() {
+                println!(
+                    "Note: the generated files from the last apply remain; run `my-linux-theme restore` to remove them."
+                );
+            }
+        }
+
+        "enable" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions enable <id>")?;
+            let settings = registry.enable(id)?;
+
+            println!("Extension enabled: {id}");
+            println!("Settings:          {}", settings.display());
+            println!("It is written on the next `my-linux-theme apply`.");
+        }
+
+        "disable" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme extensions disable <id>")?;
+            let settings = registry.disable(id)?;
+
+            println!("Extension disabled: {id}");
+            println!("Settings:           {}", settings.display());
+        }
+
+        "status" => {
+            let discovery = registry.list();
+            let enabled = registry.enabled()?;
+
+            println!("Extension roots:");
+            println!("  user:    {}", registry.user_root().display());
+            println!("  builtin: {}", registry.builtin_root().display());
+            println!();
+            println!("Enabled extensions: {}", enabled.len());
+
+            for id in &enabled {
+                match registry.load(id) {
+                    Ok(extension) => {
+                        let detected = integrations::detect(
+                            &extension
+                                .metadata
+                                .programs
+                                .iter()
+                                .map(String::as_str)
+                                .collect::<Vec<&str>>(),
+                        );
+                        let generated = destination(root, &extension.metadata.destination);
+                        let state = if generated.is_file() {
+                            "installed"
+                        } else {
+                            "not applied yet"
+                        };
+                        let detection = match detected {
+                            Some(path) => format!("found ({})", path.display()),
+                            None if extension.metadata.programs.is_empty() => {
+                                "no detection program".to_string()
+                            }
+                            None => "not found".to_string(),
+                        };
+
+                        println!("  - {id}: {state}, {detection}");
+                    }
+                    Err(error) => println!("  - {id}: broken ({error})"),
+                }
+            }
+
+            let available = discovery
+                .extensions
+                .iter()
+                .filter(|summary| !summary.enabled)
+                .count();
+
+            println!();
+            println!("Available but disabled: {available}");
+
+            for broken in &discovery.broken {
+                println!("Broken: {}: {}", broken.path.display(), broken.error);
+            }
+        }
+
+        "apply" => command_apply(root, arguments)?,
+
+        other => {
+            return Err(format!("Unknown extensions command: {other}\n\n{HELP}").into());
+        }
+    }
+
+    Ok(())
+}
+
 fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let name = rest
         .first()
@@ -464,11 +772,16 @@ fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error:
 
     let selected = integrations::select(&selected_ids)?;
     let theme = registry().load(name)?;
+    let enabled_extensions = extension_registry().render_enabled(&theme)?;
+    let extra: Vec<(String, String)> = enabled_extensions
+        .iter()
+        .map(|extension| (extension.destination.clone(), extension.content.clone()))
+        .collect();
     let had_previous_configuration = selected
         .iter()
         .any(|integration| destination(root, integration.relative_path()).exists());
 
-    let report = apply_theme_with(root, &theme, &selected)?;
+    let report = apply_theme_with_extra(root, &theme, &selected, &extra)?;
 
     println!("Theme applied successfully.");
     println!("Theme:     {} ({})", theme.metadata.name, report.theme_id);
@@ -476,6 +789,19 @@ fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error:
 
     for file in &report.installed_files {
         println!("Installed: {}", destination(root, file).display());
+    }
+
+    if enabled_extensions.is_empty() {
+        println!("Extensions: none enabled");
+    } else {
+        println!(
+            "Extensions: {}",
+            enabled_extensions
+                .iter()
+                .map(|extension| extension.id.as_str())
+                .collect::<Vec<&str>>()
+                .join(", ")
+        );
     }
 
     if had_previous_configuration {
@@ -896,6 +1222,202 @@ fn apply_wallpaper_to_desktop(path: &Path, set: bool) {
     }
 }
 
+fn install_prefix(rest: &[String]) -> PathBuf {
+    value_of(rest, "--prefix")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_prefix)
+}
+
+fn install_options(rest: &[String]) -> Result<InstallOptions, Box<dyn std::error::Error>> {
+    let prefix = install_prefix(rest);
+    let mut options = match value_of(rest, "--source") {
+        Some(source) => InstallOptions::from_source(source, &prefix)?,
+        None => InstallOptions::from_current_installation(&prefix)?,
+    };
+
+    options.force = has_flag(rest, "--force");
+    options.dry_run = has_flag(rest, "--dry-run");
+
+    Ok(options)
+}
+
+fn command_install(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let options = install_options(rest)?;
+    let layout = InstallLayout::new(&options.prefix);
+    let report = install(&options)?;
+    let environment = detect_environment();
+
+    println!(
+        "My Linux {} {}",
+        report.version,
+        if report.dry_run {
+            "(dry run)"
+        } else {
+            "installed"
+        }
+    );
+    println!("Host:     {}", environment.summary());
+    println!("Prefix:   {}", report.prefix.display());
+
+    if let Some(previous) = &report.previous_version {
+        println!("Previous: {previous}");
+    }
+
+    if !environment.arch_based {
+        println!(
+            "Warning:  this is not an Arch-based system; Arch packaging is not available here."
+        );
+    }
+
+    println!();
+    println!("Binaries:");
+
+    for (name, _) in &options.binaries {
+        println!("  {}", layout.bin(name).display());
+    }
+
+    println!("Desktop:  {}", layout.desktop_file().display());
+    println!("Themes:   {}", layout.themes_dir().display());
+    println!("Profiles: {}", layout.profiles_dir().display());
+    println!("Files:    {}", report.files.len());
+
+    for preserved in &report.preserved {
+        println!("Preserved: {preserved} (modified since the last install)");
+    }
+
+    if report.dry_run {
+        println!("\nDry run: nothing was written.");
+    } else {
+        println!(
+            "\nStart the GUI:   {}",
+            layout.bin("my-linux-gui").display()
+        );
+        println!(
+            "Verify install:  my-linux-theme install-status --prefix {}",
+            report.prefix.display()
+        );
+    }
+
+    println!("\nRuntime dependencies:");
+
+    for check in dependency_report() {
+        println!(
+            "  [{}] {}",
+            if check.missing() { "missing" } else { "ok" },
+            check.description()
+        );
+    }
+
+    Ok(())
+}
+
+fn command_upgrade(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let options = install_options(rest)?;
+    let report = upgrade(&options)?;
+    let layout = InstallLayout::new(&options.prefix);
+
+    println!(
+        "My Linux upgraded to {} {}",
+        report.version,
+        if report.dry_run { "(dry run)" } else { "" }
+    );
+
+    if let Some(previous) = &report.previous_version {
+        println!("From:     {previous}");
+    }
+
+    println!("Prefix:   {}", report.prefix.display());
+    println!("Files:    {}", report.files.len());
+
+    for preserved in &report.preserved {
+        println!("Preserved: {preserved} (modified)");
+    }
+
+    println!("Desktop:  {}", layout.desktop_file().display());
+
+    if report.dry_run {
+        println!("\nDry run: nothing was written.");
+    }
+
+    Ok(())
+}
+
+fn command_uninstall(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let layout = InstallLayout::new(install_prefix(rest));
+    let report = uninstall(&layout, has_flag(rest, "--dry-run"))?;
+
+    println!(
+        "My Linux {} {}",
+        report.version,
+        if report.dry_run {
+            "(dry run)"
+        } else {
+            "uninstalled"
+        }
+    );
+    println!("Removed:  {} program file(s)", report.removed.len());
+
+    for path in &report.missing {
+        println!("Missing:  {path} (already absent)");
+    }
+
+    println!(
+        "Kept:     user themes, user profiles, installation state and original configuration backups"
+    );
+
+    if report.dry_run {
+        println!("\nDry run: nothing was removed.");
+    }
+
+    Ok(())
+}
+
+fn command_install_status(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let prefix = install_prefix(rest);
+    let layout = InstallLayout::new(&prefix);
+
+    let Some(status) = install_status(&layout)? else {
+        println!("My Linux is not installed under {}.", prefix.display());
+
+        return Ok(());
+    };
+
+    println!("My Linux {}", status.manifest.version);
+    println!("Prefix:       {}", prefix.display());
+    println!("Platform:     {}", status.manifest.platform);
+    println!(
+        "Installed:    {} ({} file(s))",
+        format_timestamp(status.manifest.installed_at),
+        status.manifest.files.len()
+    );
+    println!(
+        "Verification: {} ({} problem(s))",
+        if status.verify.ok() {
+            "ok"
+        } else {
+            "needs attention"
+        },
+        status.verify.problems().len()
+    );
+
+    for check in status.verify.problems() {
+        println!("  [FAIL] {}: {}", check.label, check.detail);
+    }
+
+    if status.manifest.version != status.verify.current_version {
+        println!(
+            "Upgrade:      {} -> {} available",
+            status.manifest.version, status.verify.current_version
+        );
+    }
+
+    for preserved in &status.manifest.preserved {
+        println!("Preserved:    {preserved} (modified)");
+    }
+
+    Ok(())
+}
+
 fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let subcommand = rest.first().map(String::as_str).unwrap_or("list");
     let args = &rest[1..];
@@ -1091,7 +1613,12 @@ fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::er
             );
 
             if has_flag(args, "--apply") {
-                let report = apply_theme_with(root, &theme, integrations::all())?;
+                let enabled_extensions = extension_registry().render_enabled(&theme)?;
+                let extra: Vec<(String, String)> = enabled_extensions
+                    .iter()
+                    .map(|extension| (extension.destination.clone(), extension.content.clone()))
+                    .collect();
+                let report = apply_theme_with_extra(root, &theme, integrations::all(), &extra)?;
 
                 println!(
                     "Applied:     {} theme, {} files",
@@ -1338,7 +1865,7 @@ fn command_assets(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error
 }
 
 fn builtin_profiles_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../profiles")
+    desktop_core::paths::builtin_profiles_dir()
 }
 
 fn user_profiles_dir() -> PathBuf {
@@ -1990,6 +2517,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         "logs" => command_logs(&root, rest)?,
 
+        "extensions" => command_extensions(&root, rest)?,
+
         "integrations" => {
             let subcommand = rest.first().map(String::as_str).unwrap_or("list");
 
@@ -2015,6 +2544,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "history" => command_history(&root),
 
         "doctor" => command_doctor(&root)?,
+
+        "install" => command_install(rest)?,
+
+        "upgrade" => command_upgrade(rest)?,
+
+        "uninstall" => command_uninstall(rest)?,
+
+        "install-status" => command_install_status(rest)?,
 
         "wallpaper" => command_wallpaper(&root, rest)?,
 

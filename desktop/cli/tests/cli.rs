@@ -956,6 +956,91 @@ fn failed_profile_application_is_recorded() {
     assert!(stdout(&logs).contains("profile-failed"));
 }
 
+fn release_tree(root: &std::path::Path) -> std::path::PathBuf {
+    let source = root.join("release");
+
+    fs::create_dir_all(source.join("bin")).unwrap();
+    fs::write(source.join("bin/my-linux-theme"), "cli").unwrap();
+    fs::write(source.join("bin/my-linux-gui"), "gui").unwrap();
+    fs::create_dir_all(source.join("themes/install-test/colors")).unwrap();
+    fs::write(
+        source.join("themes/install-test/colors/palette.toml"),
+        "[theme]\nschema = 1\nid = \"install-test\"\nname = \"Install Test\"\n\n[colors]\nbackground = \"#010203\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(source.join("profiles/install-profile")).unwrap();
+    fs::write(
+        source.join("profiles/install-profile/profile.toml"),
+        "[profile]\nschema = 1\nid = \"install-profile\"\nname = \"Install Profile\"\ntheme = \"install-test\"\n",
+    )
+    .unwrap();
+
+    source
+}
+
+#[test]
+fn installs_reports_and_uninstalls_from_a_source_tree() {
+    let root = TempRoot::new("install");
+    let source = release_tree(root.path());
+    let prefix = root.join("prefix");
+    let prefix_arg = prefix.to_str().unwrap().to_string();
+    let source_arg = source.to_str().unwrap().to_string();
+
+    let installed = run(
+        root.path(),
+        &["install", "--prefix", &prefix_arg, "--source", &source_arg],
+    );
+    assert!(installed.status.success(), "{}", stderr(&installed));
+
+    let out = stdout(&installed);
+    assert!(out.contains("installed"));
+    assert!(out.contains("Runtime dependencies:"));
+    assert!(prefix.join("bin/my-linux-gui").is_file());
+    assert!(
+        prefix
+            .join("share/my-linux/themes/install-test/colors/palette.toml")
+            .is_file()
+    );
+    assert!(prefix.join("share/applications/my-linux.desktop").is_file());
+
+    let status = run(root.path(), &["install-status", "--prefix", &prefix_arg]);
+    assert!(status.status.success(), "{}", stderr(&status));
+
+    let out = stdout(&status);
+    assert!(out.contains("Verification: ok"));
+    assert!(out.contains(env!("CARGO_PKG_VERSION")));
+
+    let removed = run(root.path(), &["uninstall", "--prefix", &prefix_arg]);
+    assert!(removed.status.success(), "{}", stderr(&removed));
+    assert!(!prefix.join("bin/my-linux-gui").exists());
+    assert!(!prefix.join("share/applications/my-linux.desktop").exists());
+
+    let status = run(root.path(), &["install-status", "--prefix", &prefix_arg]);
+    assert!(stdout(&status).contains("not installed"));
+}
+
+#[test]
+fn install_dry_run_writes_nothing() {
+    let root = TempRoot::new("install-dry");
+    let source = release_tree(root.path());
+    let prefix = root.join("prefix");
+
+    let installed = run(
+        root.path(),
+        &[
+            "install",
+            "--prefix",
+            prefix.to_str().unwrap(),
+            "--source",
+            source.to_str().unwrap(),
+            "--dry-run",
+        ],
+    );
+    assert!(installed.status.success(), "{}", stderr(&installed));
+    assert!(stdout(&installed).contains("Dry run"));
+    assert!(!prefix.exists());
+}
+
 #[test]
 fn help_is_printed_without_arguments() {
     let root = TempRoot::new("help");
@@ -967,4 +1052,181 @@ fn help_is_printed_without_arguments() {
     assert!(out.contains("Usage:"));
     assert!(out.contains("restore"));
     assert!(out.contains("status"));
+}
+
+/// Runs the CLI with an isolated user extension directory.
+fn run_extensions(root: &Path, args: &[&str], user_extensions: &Path) -> Output {
+    Command::new(BIN)
+        .arg("--root")
+        .arg(root)
+        .args(args)
+        .env("MY_LINUX_USER_EXTENSIONS", user_extensions)
+        .output()
+        .expect("the CLI binary should start")
+}
+
+#[test]
+fn extensions_list_shows_the_builtin_extension() {
+    let root = TempRoot::new("extensions-list");
+    let user = root.join("ext-user");
+
+    let output = run_extensions(root.path(), &["extensions", "list"], &user);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    assert!(out.contains("swaync"));
+    assert!(out.contains("writes: swaync/style.css"));
+    assert!(out.contains("Enabled: none"));
+}
+
+#[test]
+fn enabled_extension_is_applied_with_each_theme_and_restored() {
+    let root = TempRoot::new("extensions-apply");
+    let user = root.join("ext-user");
+
+    let enable = run_extensions(root.path(), &["extensions", "enable", "swaync"], &user);
+    assert!(enable.status.success(), "{}", stderr(&enable));
+
+    let applied = run_extensions(root.path(), &["apply", "cyberpunk"], &user);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+    assert!(stdout(&applied).contains("Extensions: swaync"));
+
+    let stylesheet = root.read("swaync/style.css");
+
+    assert!(stylesheet.contains("--background: #0C0812;"));
+    assert!(stylesheet.contains("--primary: #FF235A;"));
+    assert!(stylesheet.contains(".control-center"));
+
+    // Switching themes rewrites the extension file from the new palette.
+    let switched = run_extensions(root.path(), &["apply", "nature"], &user);
+    assert!(switched.status.success(), "{}", stderr(&switched));
+    assert!(
+        root.read("swaync/style.css")
+            .contains("--primary: #6EBE5A;")
+    );
+
+    // The extension file had no original, so restore removes it again.
+    let restored = run_extensions(root.path(), &["restore"], &user);
+    assert!(restored.status.success(), "{}", stderr(&restored));
+    assert!(!root.join("swaync/style.css").exists());
+
+    let status = run_extensions(root.path(), &["extensions", "status"], &user);
+    assert!(status.status.success(), "{}", stderr(&status));
+    assert!(stdout(&status).contains("Enabled extensions: 1"));
+}
+
+#[test]
+fn render_prints_a_rendered_extension() {
+    let root = TempRoot::new("extensions-render");
+    let user = root.join("ext-user");
+
+    let output = run_extensions(
+        root.path(),
+        &["extensions", "render", "swaync", "--theme", "cyberpunk"],
+        &user,
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    assert!(out.contains("--accent") || out.contains("--primary: #FF235A;"));
+    assert!(!out.contains("{{colors."));
+}
+
+#[test]
+fn create_export_import_and_remove_a_user_extension() {
+    let root = TempRoot::new("extensions-user");
+    let user = root.join("ext-user");
+    let exported = root.join("export");
+
+    fs::create_dir_all(&exported).unwrap();
+
+    let create = run_extensions(
+        root.path(),
+        &[
+            "extensions",
+            "create",
+            "my-widget",
+            "--destination",
+            "my-widget/style.css",
+            "--format",
+            "css",
+        ],
+        &user,
+    );
+    assert!(create.status.success(), "{}", stderr(&create));
+    assert!(user.join("my-widget/extension.toml").is_file());
+    assert!(user.join("my-widget/template.css").is_file());
+
+    let render = run_extensions(
+        root.path(),
+        &["extensions", "render", "my-widget", "--theme", "cyberpunk"],
+        &user,
+    );
+    assert!(render.status.success(), "{}", stderr(&render));
+
+    let rendered = stdout(&render);
+
+    assert!(rendered.contains("background: #0C0812;"));
+    assert!(!rendered.contains("{{"));
+
+    let export = run_extensions(
+        root.path(),
+        &[
+            "extensions",
+            "export",
+            "my-widget",
+            exported.to_str().unwrap(),
+        ],
+        &user,
+    );
+    assert!(export.status.success(), "{}", stderr(&export));
+    assert!(exported.join("my-widget/extension.toml").is_file());
+
+    let import = run_extensions(
+        root.path(),
+        &[
+            "extensions",
+            "import",
+            exported.join("my-widget").to_str().unwrap(),
+            "--as",
+            "my-widget-copy",
+        ],
+        &user,
+    );
+    assert!(import.status.success(), "{}", stderr(&import));
+    assert!(user.join("my-widget-copy/extension.toml").is_file());
+
+    let remove = run_extensions(root.path(), &["extensions", "remove", "my-widget"], &user);
+    assert!(remove.status.success(), "{}", stderr(&remove));
+    assert!(!user.join("my-widget").exists());
+
+    let builtin = run_extensions(root.path(), &["extensions", "remove", "swaync"], &user);
+    assert!(!builtin.status.success());
+    assert!(stderr(&builtin).contains("built-in"));
+
+    let unknown = run_extensions(root.path(), &["extensions", "enable", "nope"], &user);
+    assert!(!unknown.status.success());
+    assert!(stderr(&unknown).contains("Unknown extension"));
+}
+
+#[test]
+fn a_broken_extension_does_not_block_the_listing() {
+    let root = TempRoot::new("extensions-broken");
+    let user = root.join("ext-user");
+
+    fs::create_dir_all(user.join("broken")).unwrap();
+    fs::write(user.join("broken/extension.toml"), "not toml at all").unwrap();
+
+    let output = run_extensions(root.path(), &["extensions", "list"], &user);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    assert!(out.contains("swaync"));
+    assert!(out.contains("Warning:"));
+    assert!(out.contains("broken"));
 }
