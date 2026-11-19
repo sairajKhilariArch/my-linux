@@ -1,8 +1,15 @@
 use desktop_core::{
-    Theme, clear_active_theme, install_waybar_theme, load_desktop_theme, read_active_theme,
-    render::render_waybar_css, restore_waybar_theme, waybar_paths, write_active_theme,
+    Theme, load_desktop_theme, read_active_theme,
+    render::render_waybar_css,
+    transaction::{
+        WAYBAR_RELATIVE_PATH, apply_theme, destination, detect_modifications, diagnose,
+        format_timestamp, installed_entries, original_backup, read_history, restore_theme,
+        rollback_theme,
+    },
 };
+
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const HELP: &str = "\
@@ -11,7 +18,7 @@ My Linux Theme Manager
 Usage:
   my-linux-theme [--root <directory>] <command> [arguments]
 
-Commands:
+Theme commands:
   list                List available themes
   info <theme>        Show theme metadata and the full palette
   preview <theme>     Preview theme colours with terminal swatches
@@ -19,9 +26,17 @@ Commands:
   export <theme> [file]
                       Write the generated Waybar CSS to a file
                       (default: generated/<theme>.css)
-  apply <theme>       Install the theme into the target root
-  restore             Restore the original configuration from its backup
+
+Desktop commands:
+  apply <theme>       Apply a theme as a single transaction
+  restore             Restore the original configuration
+  rollback            Undo the most recent apply
   status              Show the active theme and installation state
+
+Recovery commands:
+  backup list         List configuration backups
+  history             Show the installation history
+  doctor              Diagnose the installation
 
 Options:
   --root <directory>  Directory that receives generated configurations
@@ -99,6 +114,177 @@ fn describe(path: &Path) -> String {
     }
 }
 
+fn command_apply(
+    root: &Path,
+    themes: &Path,
+    args: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let name = args.first().ok_or("Usage: my-linux-theme apply <theme>")?;
+
+    let theme = load_desktop_theme(themes, name)?;
+    let path = destination(root, WAYBAR_RELATIVE_PATH);
+    let had_previous_configuration = path.exists();
+
+    let report = apply_theme(root, &theme)?;
+
+    println!("Theme applied successfully.");
+    println!("Theme:     {} ({})", theme.metadata.name, report.theme_id);
+    println!("Root:      {}", root.display());
+
+    for file in &report.installed_files {
+        println!("Installed: {}", destination(root, file).display());
+    }
+
+    if had_previous_configuration {
+        println!(
+            "Backup:    {}",
+            original_backup(root, WAYBAR_RELATIVE_PATH).display()
+        );
+    } else {
+        println!("Backup:    none (there was no previous configuration)");
+    }
+
+    for backup in &report.created_backups {
+        println!("Created:   {backup}");
+    }
+
+    Ok(())
+}
+
+fn command_status(root: &Path) {
+    let path = destination(root, WAYBAR_RELATIVE_PATH);
+    let backup = original_backup(root, WAYBAR_RELATIVE_PATH);
+    let active = read_active_theme(root).unwrap_or_else(|| "none".to_string());
+
+    println!("My Linux status");
+    println!("Root:             {}", root.display());
+    println!("Active theme:     {}", active);
+    println!("Configuration:    {}", describe(&path));
+    println!("Original backup:  {}", describe(&backup));
+
+    let installed = installed_entries(root);
+
+    if installed.is_empty() {
+        println!("Installed files:  not recorded");
+    } else {
+        for modification in detect_modifications(root) {
+            println!(
+                "Installed files:  {} ({})",
+                modification.relative_path,
+                modification.state.label()
+            );
+        }
+    }
+
+    println!("Integrations:     Waybar (CSS)");
+}
+
+fn command_backup_list(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = root.join("backups");
+
+    if !directory.is_dir() {
+        println!("No backups found; {} does not exist.", directory.display());
+
+        return Ok(());
+    }
+
+    let mut entries: Vec<PathBuf> = fs::read_dir(&directory)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+
+    entries.sort();
+
+    if entries.is_empty() {
+        println!("No backups found in {}.", directory.display());
+
+        return Ok(());
+    }
+
+    println!("Backups in {}:", directory.display());
+
+    for entry in entries {
+        let name = entry
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let size = fs::metadata(&entry)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let digest = desktop_core::config_manager::digest_file(&entry)
+            .unwrap_or_else(|_| "unreadable".to_string());
+
+        println!("  {:<28} {:>6} bytes  digest {}", name, size, digest);
+    }
+
+    Ok(())
+}
+
+fn command_history(root: &Path) {
+    let history = read_history(root);
+
+    if history.is_empty() {
+        println!("No installation history recorded for {}.", root.display());
+
+        return;
+    }
+
+    println!("Installation history for {}:", root.display());
+
+    for entry in history {
+        let files = if entry.files.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", entry.files.join(", "))
+        };
+
+        println!(
+            "  {}  {:<8} {:<12}{}",
+            format_timestamp(entry.timestamp),
+            entry.action,
+            entry.theme,
+            files
+        );
+    }
+}
+
+fn command_doctor(root: &Path, themes: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let diagnostics = diagnose(root, themes);
+    let mut problems = 0;
+
+    println!("My Linux doctor");
+    println!("Root: {}", root.display());
+    println!();
+
+    for diagnostic in &diagnostics {
+        if !diagnostic.ok {
+            problems += 1;
+        }
+
+        println!(
+            "  [{}] {}: {}",
+            if diagnostic.ok { "ok" } else { "warn" },
+            diagnostic.label,
+            diagnostic.detail
+        );
+    }
+
+    println!();
+    println!(
+        "Summary: {} checks, {} problem(s)",
+        diagnostics.len(),
+        problems
+    );
+
+    if problems > 0 {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (root_flag, args) = parse_args(env::args().skip(1).collect())?;
 
@@ -110,6 +296,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let root = root_flag.unwrap_or_else(default_root);
     let themes = themes_dir();
     let command = args[0].as_str();
+    let rest = &args[1..];
 
     match command {
         "list" => {
@@ -121,7 +308,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "info" => {
-            let name = args.get(1).ok_or("Usage: my-linux-theme info <theme>")?;
+            let name = rest.first().ok_or("Usage: my-linux-theme info <theme>")?;
 
             let theme = load_desktop_theme(&themes, name)?;
 
@@ -155,7 +342,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "render" => {
-            let name = args.get(1).ok_or("Usage: my-linux-theme render <theme>")?;
+            let name = rest.first().ok_or("Usage: my-linux-theme render <theme>")?;
 
             let theme = load_desktop_theme(&themes, name)?;
 
@@ -163,7 +350,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "preview" => {
-            let name = args.get(1).ok_or("Usage: my-linux-theme preview <theme>")?;
+            let name = rest
+                .first()
+                .ok_or("Usage: my-linux-theme preview <theme>")?;
 
             let theme = load_desktop_theme(&themes, name)?;
 
@@ -189,69 +378,70 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("================================");
         }
 
-        "apply" => {
-            let name = args.get(1).ok_or("Usage: my-linux-theme apply <theme>")?;
+        "apply" => command_apply(&root, &themes, rest)?,
 
-            let theme = load_desktop_theme(&themes, name)?;
-            let paths = waybar_paths(&root);
-            let had_previous_configuration = paths.destination.exists();
+        "restore" => {
+            let restored = restore_theme(&root)?;
 
-            install_waybar_theme(&theme, &paths.destination, &paths.backup)?;
-            write_active_theme(&root, &theme.metadata.id)?;
+            println!("Original configuration restored.");
+            println!("Root: {}", root.display());
 
-            println!("Theme applied successfully.");
-            println!("Theme:     {} ({})", theme.metadata.name, theme.metadata.id);
-            println!("Root:      {}", root.display());
-            println!("Installed: {}", paths.destination.display());
+            for file in &restored {
+                println!("Restored: {}", destination(&root, file).display());
+            }
 
-            if had_previous_configuration {
-                println!("Backup:    {}", paths.backup.display());
-            } else {
-                println!("Backup:    none (there was no previous configuration)");
+            println!(
+                "Backup kept at: {}",
+                original_backup(&root, WAYBAR_RELATIVE_PATH).display()
+            );
+        }
+
+        "rollback" => {
+            let restored = rollback_theme(&root)?;
+            let active = read_active_theme(&root).unwrap_or_else(|| "none".to_string());
+
+            println!("Rolled back to the previous configuration.");
+            println!("Active theme: {}", active);
+
+            for file in &restored {
+                println!("Restored: {}", destination(&root, file).display());
             }
         }
 
-        "restore" => {
-            let paths = waybar_paths(&root);
+        "status" => command_status(&root),
 
-            restore_waybar_theme(&paths.destination, &paths.backup)?;
-            clear_active_theme(&root)?;
+        "backup" => {
+            let subcommand = rest.first().map(String::as_str).unwrap_or("list");
 
-            println!("Original configuration restored.");
-            println!("Restored: {}", paths.destination.display());
-            println!("Backup kept at: {}", paths.backup.display());
+            if subcommand != "list" {
+                return Err(format!("Unknown backup command: {subcommand}\n\n{HELP}").into());
+            }
+
+            command_backup_list(&root)?;
         }
 
-        "status" => {
-            let paths = waybar_paths(&root);
-            let active = read_active_theme(&root).unwrap_or_else(|| "none".to_string());
+        "history" => command_history(&root),
 
-            println!("My Linux status");
-            println!("Root:             {}", root.display());
-            println!("Active theme:     {}", active);
-            println!("Configuration:    {}", describe(&paths.destination));
-            println!("Original backup:  {}", describe(&paths.backup));
-            println!("Integrations:     Waybar (CSS)");
-        }
+        "doctor" => command_doctor(&root, &themes)?,
 
         "export" => {
-            let name = args
-                .get(1)
+            let name = rest
+                .first()
                 .ok_or("Usage: my-linux-theme export <theme> [file]")?;
 
             let theme = load_desktop_theme(&themes, name)?;
             let css = render_waybar_css(&theme);
 
-            let output_file = match args.get(2) {
+            let output_file = match rest.get(1) {
                 Some(path) => PathBuf::from(path),
                 None => PathBuf::from("generated").join(format!("{}.css", name)),
             };
 
             if let Some(parent) = output_file.parent() {
-                std::fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent)?;
             }
 
-            std::fs::write(&output_file, css)?;
+            fs::write(&output_file, css)?;
 
             println!("Theme exported successfully.");
             println!("File: {}", output_file.display());

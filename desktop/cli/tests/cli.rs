@@ -241,6 +241,113 @@ fn unknown_theme_and_unknown_command_fail() {
 }
 
 #[test]
+fn rollback_undoes_the_last_apply() {
+    let root = TempRoot::new("rollback");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+    let cyberpunk = root.read("waybar.css");
+
+    assert!(run(root.path(), &["apply", "nature"]).status.success());
+    assert!(root.read("waybar.css").contains("#6EBE5A"));
+
+    let output = run(root.path(), &["rollback"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    assert_eq!(root.read("waybar.css"), cyberpunk);
+    assert_eq!(root.read("state/active-theme").trim(), "cyberpunk");
+    assert_eq!(root.read("backups/waybar.css.original"), ORIGINAL);
+    assert!(stdout(&run(root.path(), &["status"])).contains("unmodified"));
+}
+
+#[test]
+fn rollback_without_a_previous_state_fails() {
+    let root = TempRoot::new("rollback-missing");
+
+    let output = run(root.path(), &["rollback"]);
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("No backup found"));
+}
+
+#[test]
+fn history_records_every_operation() {
+    let root = TempRoot::new("history");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+    assert!(run(root.path(), &["apply", "nature"]).status.success());
+    assert!(run(root.path(), &["restore"]).status.success());
+
+    let output = run(root.path(), &["history"]);
+    assert!(output.status.success());
+
+    let out = stdout(&output);
+
+    assert!(out.contains("cyberpunk"));
+    assert!(out.contains("nature"));
+    assert!(out.contains("restore"));
+    assert!(out.contains("waybar.css"));
+}
+
+#[test]
+fn history_is_empty_before_any_operation() {
+    let root = TempRoot::new("history-empty");
+    let output = run(root.path(), &["history"]);
+
+    assert!(output.status.success());
+    assert!(stdout(&output).contains("No installation history"));
+}
+
+#[test]
+fn backup_list_shows_the_original_backup() {
+    let root = TempRoot::new("backup-list");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+
+    let output = run(root.path(), &["backup", "list"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    assert!(out.contains("waybar.css.original"));
+    assert!(out.contains("waybar.css.previous"));
+    assert!(out.contains("digest"));
+}
+
+#[test]
+fn doctor_reports_a_healthy_installation() {
+    let root = TempRoot::new("doctor");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+
+    let output = run(root.path(), &["doctor"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let out = stdout(&output);
+
+    assert!(out.contains("[ok] Installation root"));
+    assert!(out.contains("[ok] File waybar.css"));
+    assert!(out.contains("0 problem(s)"));
+}
+
+#[test]
+fn status_reports_a_modified_configuration() {
+    let root = TempRoot::new("status-modified");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+    assert!(stdout(&run(root.path(), &["status"])).contains("unmodified"));
+
+    root.write("waybar.css", "/* hand edited */");
+
+    assert!(stdout(&run(root.path(), &["status"])).contains("modified by you"));
+}
+
+#[test]
 fn help_is_printed_without_arguments() {
     let root = TempRoot::new("help");
     let output = run(root.path(), &[]);

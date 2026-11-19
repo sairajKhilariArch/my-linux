@@ -6,10 +6,11 @@ configuration formats that each desktop component understands.
 
 The project does not depend on HyDE or any other rice framework.
 
-**Status:** Phase 1 (foundation) is complete for the Waybar integration. The CLI
-installs into an isolated *installation root* that you choose, so it never
-touches your real desktop configuration yet. Real desktop paths, the remaining
-integrations, profiles, wallpapers and the GUI are not implemented — see
+**Status:** Phase 1 (foundation) and Phase 2 (configuration management) are
+complete for the Waybar integration. The CLI installs into an isolated
+*installation root* that you choose, so it never touches your real desktop
+configuration yet. Real desktop paths, the remaining integrations, profiles,
+wallpapers and the GUI are not implemented — see
 [`docs/to-do.md`](docs/to-do.md) for the roadmap and
 [`CHANGELOG.md`](CHANGELOG.md) for release history.
 
@@ -20,10 +21,14 @@ integrations, profiles, wallpapers and the GUI are not implemented — see
 | Theme loading and validation from `themes/<name>/colors/palette.toml` | Implemented |
 | Palette preview and theme details (`preview`, `info`, `render`) | Implemented |
 | Waybar CSS renderer | Implemented |
-| Atomic installation with first-run backup and `restore` | Implemented |
-| Permission preservation and symlink-safe writes | Implemented |
-| Path validation (rejects `..` traversal and empty paths) | Implemented |
-| Active theme reporting (`status`) | Implemented |
+| Transactional apply with backup, verification and rollback | Implemented |
+| First-run original backup, retained forever | Implemented |
+| `restore` back to the original configuration | Implemented |
+| `rollback` to the state before the last apply | Implemented |
+| Installation journal and recovery from an interrupted operation | Implemented |
+| Modification detection (unmodified / hand-edited / missing) | Implemented |
+| `status`, `history`, `backup list`, `doctor` | Implemented |
+| Path validation, permission preservation, symlink-safe writes | Implemented |
 | Rofi, Hyprland, Kitty, notifications, lockscreen integrations | Not implemented |
 | Profiles, wallpapers, fonts, icons, GUI, packaging | Not implemented |
 
@@ -50,7 +55,11 @@ cargo build --workspace
 ./target/debug/my-linux-theme render cyberpunk
 ./target/debug/my-linux-theme apply cyberpunk
 ./target/debug/my-linux-theme status
+./target/debug/my-linux-theme rollback
 ./target/debug/my-linux-theme restore
+./target/debug/my-linux-theme history
+./target/debug/my-linux-theme backup list
+./target/debug/my-linux-theme doctor
 ./target/debug/my-linux-theme export cyberpunk
 ```
 
@@ -63,32 +72,44 @@ default is `$MY_LINUX_ROOT` if set, otherwise `target/theme-test`.
 <root>/
 ├── waybar.css                        # generated configuration
 ├── backups/
-│   └── waybar.css.original           # first original configuration, never overwritten
+│   ├── waybar.css.original           # first original configuration, never overwritten
+│   └── waybar.css.previous           # state before the last operation (used by rollback)
 └── state/
-    └── active-theme                  # theme currently installed, removed by restore
+    ├── active-theme                  # theme currently installed
+    ├── installed.tsv                 # installed files and their digests
+    ├── journal.tsv                   # present only while an operation is in flight
+    ├── previous-theme                # theme to return to on rollback
+    └── history.log                   # apply / restore / rollback / recover history
 ```
 
 ### Safety guarantees
 
-- A configuration is written to a unique temporary file and published with an
-  atomic rename.
+- Every apply is a transaction: generate, validate, journal, back up, install
+  atomically, then commit the new state.
+- A failure at any step rolls the installation back; a failed apply never leaves
+  a half-themed desktop.
+- An interrupted operation is detected through the journal and reverted by the
+  next command that touches the installation.
 - The first original configuration is backed up once and never replaced.
 - Replacing a configuration keeps its file permissions.
 - Symlinked destinations are written through; the link is preserved.
-- A failed installation leaves the previous configuration untouched and removes
-  its temporary file.
-- `restore` refuses to run when no backup exists and says so explicitly.
+- Files changed by hand are detected and reported instead of being silently
+  overwritten without a backup.
+- `restore` and `rollback` refuse to run when the backup they need is missing,
+  and say which file is missing.
 
 ## Repository layout
 
 ```text
 desktop/
-├── core/             # coordinates theme loading, installation and restore
-├── theme-engine/     # TOML palette parsing and colour validation
-├── config-manager/   # safe file operations: backup, atomic install, restore
-├── components/       # shared desktop components (placeholder)
-└── cli/              # the my-linux-theme binary and its integration tests
-themes/               # built-in theme definitions
-configs/              # reference configuration templates
-docs/                 # product roadmap
+├── core/
+│   ├── src/lib.rs          # theme loading, installation and restore entry points
+│   └── src/transaction.rs  # journal, transaction, rollback, history, diagnostics
+├── theme-engine/           # TOML palette parsing and colour validation
+├── config-manager/         # safe file operations: backup, atomic install, restore, digests
+├── components/             # shared desktop components (placeholder)
+└── cli/                    # the my-linux-theme binary and its integration tests
+themes/                     # built-in theme definitions
+configs/                    # reference configuration templates
+docs/                       # product roadmap
 ```

@@ -5,6 +5,28 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-19
+
+### Added
+
+- `rollback` command: reverts to the state before the most recent apply and
+  restores the previous theme, keeping installed-file tracking intact.
+- `history` command: lists every apply, restore, rollback and recovery with a
+  readable UTC timestamp and the files involved.
+- `backup list` command: lists the retained backups with size and digest.
+- `doctor` command: reports the installation root, theme loading, active theme,
+  an interrupted operation, modified files and the original backup. It exits
+  with a non-zero status when a check fails.
+- `status` now reports each installed file as unmodified, hand-edited or
+  missing.
+
+### Changed
+
+- `apply` runs as a transaction and prints the installed files and the backups
+  it created; `restore` also runs through the transaction and records history.
+- Phase 2 of the roadmap is marked complete and the README documents the
+  transaction, the state layout and the recovery commands.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

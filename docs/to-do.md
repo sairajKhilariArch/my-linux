@@ -833,15 +833,19 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 
 ## Phase 2 — Production-ready configuration management
 
-- [ ] Define configuration destination mapping.
-- [ ] Design backup naming and retention.
-- [ ] Preserve file permissions.
-- [ ] Handle symlinks safely.
-- [ ] Detect user modifications.
-- [ ] Add installation journal.
-- [ ] Implement transaction-style application.
-- [ ] Implement rollback after failure.
-- [ ] Add recovery and diagnostic commands.
+**Current phase: Complete**
+
+- [x] Define configuration destination mapping.
+- [x] Design backup naming and retention.
+- [x] Preserve file permissions.
+- [x] Handle symlinks safely.
+- [x] Detect user modifications.
+- [x] Add installation journal.
+- [x] Implement transaction-style application.
+- [x] Implement rollback after failure.
+- [x] Add recovery and diagnostic commands.
+
+**Status:** Complete (v0.6.0).
 
 **Acceptance:** The system can safely install, restore and recover multiple configurations.
 
@@ -992,16 +996,16 @@ These features must not delay completion of the core platform.
 
 Our actual next tasks are deliberately smaller than the entire roadmap.
 
-1. Add the CLI `restore` command.
-2. Verify the original test CSS is restored.
-3. Test applying Cyberpunk repeatedly.
-4. Test switching from Cyberpunk to Nature.
-5. Verify that the first original backup is preserved.
-6. Add automated CLI integration tests.
-7. Improve backup and installation edge cases.
-8. Finalize the configuration manager API.
-9. Build the first complete Waybar integration.
-10. Start the Rofi renderer.
+- [x] Add the CLI `restore` command.
+- [x] Verify the original test CSS is restored.
+- [x] Test applying Cyberpunk repeatedly.
+- [x] Test switching from Cyberpunk to Nature.
+- [x] Verify that the first original backup is preserved.
+- [x] Add automated CLI integration tests.
+- [x] Improve backup and installation edge cases.
+- [x] Finalize the configuration manager API.
+- [ ] Build the first complete Waybar integration.
+- [ ] Start the Rofi renderer.
 
 We must complete these tasks before moving to real desktop installation.
 
