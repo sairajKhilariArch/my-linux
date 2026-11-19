@@ -514,8 +514,8 @@ fn integrations_list_shows_the_core_applications() {
     let out = stdout(&output);
 
     for integration in [
-        "waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock", "gtk3", "gtk4", "qt", "zsh",
-        "neovim", "yazi", "btop",
+        "waybar", "rofi", "hyprland", "kitty", "dunst", "mako", "wofi", "hyprlock", "gtk3", "gtk4",
+        "qt", "zsh", "neovim", "yazi", "btop",
     ] {
         assert!(out.contains(integration), "{integration} should be listed");
     }
@@ -539,6 +539,8 @@ fn apply_installs_every_integration_configuration() {
     );
     assert!(root.read("kitty/my-linux.conf").contains("color15"));
     assert!(root.read("dunst/dunstrc").contains("[urgency_critical]"));
+    assert!(root.read("mako/config").contains("[urgency=critical]"));
+    assert!(root.read("wofi/style.css").contains("#entry:selected"));
     assert!(
         root.read("hyprlock/hyprlock.conf")
             .contains("input-field {")
@@ -1443,4 +1445,29 @@ fn repository_rejects_unknown_packages_and_missing_indexes() {
     let unset = run_env(root.path(), &["repository", "list"], &envs);
     assert!(!unset.status.success());
     assert!(stderr(&unset).contains("No repository index"));
+}
+
+#[test]
+fn profile_apply_writes_enabled_extensions() {
+    let root = TempRoot::new("profile-extensions");
+    let user_extensions = root.join("user-extensions");
+    let envs = [(
+        "MY_LINUX_USER_EXTENSIONS",
+        user_extensions.to_str().unwrap(),
+    )];
+
+    let enable = run_env(root.path(), &["extensions", "enable", "swaync"], &envs);
+    assert!(enable.status.success(), "{}", stderr(&enable));
+
+    let apply = run_env(
+        root.path(),
+        &["profile", "apply", "gaming", "--no-set"],
+        &envs,
+    );
+    assert!(apply.status.success(), "{}", stderr(&apply));
+
+    let stylesheet = root.read("swaync/style.css");
+
+    assert!(stylesheet.contains("#0B1020"));
+    assert!(stdout(&apply).contains("swaync/style.css"));
 }

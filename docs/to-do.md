@@ -903,6 +903,8 @@ For each integration:
 | Hyprland (`hyprland/my-linux.conf`) | Yes | Yes | `hyprctl reload` | Yes |
 | Kitty (`kitty/my-linux.conf`) | Yes | Yes | `pkill -USR1 -x kitty` | Yes |
 | Notifications (`dunst/dunstrc`) | Yes | Yes | `dunstctl reload` | Yes |
+| Notifications (`mako/config`) | Yes | Yes | `makoctl reload` | Yes |
+| Launcher (`wofi/style.css`) | Yes | Yes | next launch | Yes |
 | Lock screen (`hyprlock/hyprlock.conf`) | Yes | Yes | next lock | Yes |
 
 **Status:** Complete (v0.10.0) for rendering and safe installation into the

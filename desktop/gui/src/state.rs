@@ -13,7 +13,7 @@ use desktop_core::config_manager::{digest_file, install_content};
 use desktop_core::extensions::{ExtensionRegistry, user_extensions_dir};
 use desktop_core::integrations;
 use desktop_core::log::{Event, read_events};
-use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
+use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile_with_extensions};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::transaction::{
     Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with_extra,
@@ -398,7 +398,15 @@ impl GuiState {
             set_wallpaper: detect_tool().is_some(),
             reload: false,
         };
-        let report = apply_profile(&self.root, &profile, &theme, &options)
+        let generated = self
+            .extensions_registry
+            .render_enabled(&theme)
+            .map_err(|error| error.to_string())?;
+        let extra: Vec<(String, String)> = generated
+            .into_iter()
+            .map(|extension| (extension.destination, extension.content))
+            .collect();
+        let report = apply_profile_with_extensions(&self.root, &profile, &theme, &options, &extra)
             .map_err(|error| error.to_string())?;
 
         self.refresh();
@@ -842,7 +850,7 @@ mod tests {
 
         assert_eq!(state.themes.len(), 4);
         assert!(state.themes.iter().any(|theme| theme.id == "cyberpunk"));
-        assert_eq!(state.integrations.len(), 13);
+        assert_eq!(state.integrations.len(), 15);
         assert!(
             state
                 .integrations

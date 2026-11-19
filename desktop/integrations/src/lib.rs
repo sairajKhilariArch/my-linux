@@ -17,10 +17,12 @@ pub mod gtk4;
 pub mod hyprland;
 pub mod hyprlock;
 pub mod kitty;
+pub mod mako;
 pub mod neovim;
 pub mod qt;
 pub mod rofi;
 pub mod waybar;
+pub mod wofi;
 pub mod yazi;
 pub mod zsh;
 
@@ -75,6 +77,8 @@ static INTEGRATIONS: &[&dyn Integration] = &[
     &hyprland::Hyprland,
     &kitty::Kitty,
     &dunst::Dunst,
+    &mako::Mako,
+    &wofi::Wofi,
     &hyprlock::Hyprlock,
     &gtk3::Gtk3,
     &gtk4::Gtk4,

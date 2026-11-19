@@ -146,7 +146,7 @@ mod tests {
     fn reports_every_integration() {
         let report = dependency_report();
 
-        assert!(report.len() >= 13);
+        assert!(report.len() >= 15);
         assert!(report.iter().any(|check| check.name == "waybar"));
         assert!(report.iter().any(|check| check.name == "hyprctl"));
         assert!(report.iter().all(|check| !check.description().is_empty()));

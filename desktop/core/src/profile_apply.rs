@@ -171,9 +171,21 @@ pub fn apply_profile(
     theme: &LoadedTheme,
     options: &ProfileApplyOptions,
 ) -> Result<ProfileReport, ProfileApplyError> {
+    apply_profile_with_extensions(root, profile, theme, options, &[])
+}
+
+/// Applies a profile plus extra generated files (enabled extensions), all in the
+/// same transaction as the integrations and layout snippet.
+pub fn apply_profile_with_extensions(
+    root: impl AsRef<Path>,
+    profile: &Profile,
+    theme: &LoadedTheme,
+    options: &ProfileApplyOptions,
+    extra: &[(String, String)],
+) -> Result<ProfileReport, ProfileApplyError> {
     let root = root.as_ref();
 
-    match apply_profile_transaction(root, profile, theme, options) {
+    match apply_profile_transaction(root, profile, theme, options, extra) {
         Ok(report) => {
             let _ = crate::log::append_event(
                 root,
@@ -207,6 +219,7 @@ fn apply_profile_transaction(
     profile: &Profile,
     theme: &LoadedTheme,
     options: &ProfileApplyOptions,
+    extensions: &[(String, String)],
 ) -> Result<ProfileReport, ProfileApplyError> {
     profile
         .validate()
@@ -220,10 +233,12 @@ fn apply_profile_transaction(
     let selected =
         integrations::select(&profile.metadata.integrations).map_err(ProfileApplyError::Profile)?;
 
-    let extra = vec![(
+    let mut extra = vec![(
         LAYOUT_RELATIVE_PATH.to_string(),
         render_layout(&profile.layout),
     )];
+
+    extra.extend(extensions.iter().cloned());
 
     let report = apply_theme_with_extra(root, theme, &selected, &extra)?;
 
@@ -301,6 +316,45 @@ mod tests {
 
     fn theme(name: &str) -> LoadedTheme {
         crate::load_desktop_theme("../../themes", name).expect("theme should load")
+    }
+
+    #[test]
+    fn applies_enabled_extensions_with_a_profile() {
+        let dir = test_dir("extensions");
+        let mut profile = Profile::new("dev-ext", "Developer", "cyberpunk").unwrap();
+
+        profile.metadata.integrations = vec!["waybar".to_string()];
+        profile.validate().unwrap();
+
+        let extra = vec![(
+            "extra/style.conf".to_string(),
+            "accent = #FF235A\n".to_string(),
+        )];
+        let report = apply_profile_with_extensions(
+            &dir,
+            &profile,
+            &theme("cyberpunk"),
+            &ProfileApplyOptions {
+                set_wallpaper: false,
+                reload: false,
+            },
+            &extra,
+        )
+        .unwrap();
+
+        assert!(dir.join("extra/style.conf").is_file());
+        assert!(
+            report
+                .installed_files
+                .iter()
+                .any(|file| file == "extra/style.conf")
+        );
+
+        crate::restore_theme(&dir).unwrap();
+
+        assert!(!dir.join("extra/style.conf").exists());
+
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

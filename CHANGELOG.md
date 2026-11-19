@@ -5,6 +5,29 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-11-19
+
+### Added
+
+- `mako` integration: Mako notification configuration with `[colors]`, outline
+  and per-urgency sections, theme border size/radius and interface font, plus a
+  `makoctl reload` reload command. This gives Hyprland users a notification
+  daemon alternative to Dunst.
+- `wofi` integration: Wofi launcher stylesheet covering the window, input,
+  entries, selection, scroll container, inner box and tooltips, using the theme
+  colours, typography and geometry.
+- Profile application now writes enabled extensions in the same transaction as
+  the integrations and layout snippet (`apply_profile_with_extensions`), so a
+  profile switch and its third-party styling roll back together. Covered by a
+  new core test that applies and restores an extension file.
+- 4 integration tests (rendered output and rejected incomplete output) and the
+  apply/listing end-to-end tests now cover both applications.
+
+### Changed
+
+- Workspace version 0.20.0; `PKGBUILD` `pkgver` follows it. `optdepends` now
+  mentions mako and wofi.
+
 ## [0.19.0] - 2026-11-19
 
 ### Added

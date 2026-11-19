@@ -21,7 +21,7 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Theme discovery, validation, schema versioning, inheritance | Implemented |
 | Typography and geometry tokens (font, size, radius, spacing, border, opacity) | Implemented |
 | Theme creation, import, export, removal, palette generation | Implemented |
-| Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock rendering | Implemented |
+| Waybar, Rofi, Wofi, Hyprland, Kitty, Dunst, Mako, Hyprlock rendering | Implemented |
 | GTK 3/4, Qt, Zsh, Neovim, Yazi, Btop rendering | Implemented |
 | Generated-output validation per application | Implemented |
 | Application detection and per-application reload commands | Implemented |
@@ -168,6 +168,8 @@ it no process is touched.
 | `hyprland` | Hyprland | `hyprland/my-linux.conf` | `hyprctl reload` |
 | `kitty` | Kitty | `kitty/my-linux.conf` | `pkill -USR1 -x kitty` |
 | `dunst` | Notifications | `dunst/dunstrc` | `dunstctl reload` |
+| `mako` | Notifications | `mako/config` | `makoctl reload` |
+| `wofi` | Wofi launcher | `wofi/style.css` | applied on next launch |
 | `hyprlock` | Lock screen | `hyprlock/hyprlock.conf` | applied on next lock |
 | `gtk3` | GTK 3 | `gtk-3.0/my-linux.css` | applied on next start |
 | `gtk4` | GTK 4 | `gtk-4.0/my-linux.css` | applied on next start |

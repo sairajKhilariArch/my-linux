@@ -24,7 +24,7 @@ pub mod transaction;
 
 pub use profile_apply::{
     LAYOUT_RELATIVE_PATH, ProfileApplyError, ProfileApplyOptions, ProfileReport, apply_profile,
-    render_layout,
+    apply_profile_with_extensions, render_layout,
 };
 
 pub use transaction::{

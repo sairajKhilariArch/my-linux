@@ -17,7 +17,7 @@ use desktop_core::assets::{
     read_settings, remove_asset, render_preview, save_theme, set_wallpaper, write_settings,
 };
 use desktop_core::log::{Level, append_event, last_event, read_events};
-use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
+use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile_with_extensions};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::{read_active_profile, read_previous_profile};
 use desktop_installer::{
@@ -489,6 +489,18 @@ fn extension_registry() -> ExtensionRegistry {
         desktop_core::paths::builtin_extensions_dir(),
         user_extensions_dir(),
     )
+}
+
+/// Enabled extensions rendered for `theme`, ready for a transaction.
+fn enabled_extension_files(
+    theme: &desktop_core::LoadedTheme,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let generated = extension_registry().render_enabled(theme)?;
+
+    Ok(generated
+        .into_iter()
+        .map(|extension| (extension.destination, extension.content))
+        .collect())
 }
 
 fn command_extensions(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -2417,8 +2429,9 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
                 .ok_or("Usage: my-linux-theme profile apply <id> [--reload] [--no-set]")?;
             let profile = profiles.load(id)?;
             let theme = registry().load(&profile.metadata.theme)?;
+            let extensions = enabled_extension_files(&theme)?;
 
-            let report = apply_profile(
+            let report = apply_profile_with_extensions(
                 root,
                 &profile,
                 &theme,
@@ -2426,6 +2439,7 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
                     set_wallpaper: !has_flag(args, "--no-set"),
                     reload: has_flag(args, "--reload"),
                 },
+                &extensions,
             )?;
 
             println!("Profile applied successfully.");
@@ -2470,8 +2484,9 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
             let id = read_previous_profile(root).ok_or("No previous profile is recorded")?;
             let profile = profiles.load(&id)?;
             let theme = registry().load(&profile.metadata.theme)?;
+            let extensions = enabled_extension_files(&theme)?;
 
-            let report = apply_profile(
+            let report = apply_profile_with_extensions(
                 root,
                 &profile,
                 &theme,
@@ -2479,6 +2494,7 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
                     set_wallpaper: true,
                     reload: false,
                 },
+                &extensions,
             )?;
 
             println!(
