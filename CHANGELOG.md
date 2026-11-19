@@ -5,6 +5,36 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-19
+
+### Added
+
+- Seven extended integrations, each enableable on its own with
+  `--integration <id>`:
+  - `gtk3` and `gtk4` — stylesheets defining the palette colours and the
+    window, headerbar, button, entry, selection, menu, tooltip and scrollbar
+    states.
+  - `qt` — qt6ct/qt5ct colour scheme with `active`, `inactive` and `disabled`
+    palettes covering all 21 `QPalette` roles.
+  - `zsh` — prompt, completion listing colours and autosuggestion styling,
+    sourced from `.zshrc`.
+  - `neovim` — Lua colour scheme module with editor, UI and diagnostic
+    highlights.
+  - `yazi` — file manager theme with `mgr`, `status`, `tabs` and `filetype`
+    sections.
+  - `btop` — system monitor theme with all 40 colour keys.
+- `validate_toml` helper rejects generated TOML that cannot be parsed.
+- Unit tests for every new renderer together with its output validation, and a
+  CLI test that applies and renders the extended integrations end to end.
+
+### Changed
+
+- `integrations list` and `integrations status` now report thirteen
+  integrations instead of six.
+- Phase 5 of the roadmap is complete for the applications listed above; browser
+  styling is intentionally not implemented because no stable configuration
+  format exists.
+
 ## [0.10.0] - 2026-11-19
 
 ### Added

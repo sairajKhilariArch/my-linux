@@ -21,6 +21,7 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | Theme discovery, validation, schema versioning, inheritance | Implemented |
 | Theme creation, import, export, removal, palette generation | Implemented |
 | Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock rendering | Implemented |
+| GTK 3/4, Qt, Zsh, Neovim, Yazi, Btop rendering | Implemented |
 | Generated-output validation per application | Implemented |
 | Application detection and per-application reload commands | Implemented |
 | Multi-file transactional apply with backup and rollback | Implemented |
@@ -29,7 +30,7 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | Modification detection and refusal to delete hand-edited files | Implemented |
 | `status`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
-| GTK, Qt, Zsh, editor, file manager integrations | Not implemented |
+| Browser styling | Not implemented (no stable format) |
 | Profiles, wallpapers, fonts/icons/cursors, GUI, packaging | Not implemented |
 
 ## Build and verify
@@ -89,10 +90,17 @@ it no process is touched.
 | `kitty` | Kitty | `kitty/my-linux.conf` | `pkill -USR1 -x kitty` |
 | `dunst` | Notifications | `dunst/dunstrc` | `dunstctl reload` |
 | `hyprlock` | Lock screen | `hyprlock/hyprlock.conf` | applied on next lock |
+| `gtk3` | GTK 3 | `gtk-3.0/my-linux.css` | applied on next start |
+| `gtk4` | GTK 4 | `gtk-4.0/my-linux.css` | applied on next start |
+| `qt` | Qt (qt6ct/qt5ct) | `qt6ct/colors/my-linux.conf` | applied on next start |
+| `zsh` | Zsh prompt | `zsh/my-linux.zsh` | new shell |
+| `neovim` | Neovim | `nvim/lua/my-linux.lua` | applied on next start |
+| `yazi` | Yazi file manager | `yazi/theme.toml` | applied on next start |
+| `btop` | Btop system monitor | `btop/themes/my-linux.theme` | applied on next start |
 
 Each integration renders from the same palette, validates its own output and is
-installed independently. Hyprland and Kitty files are snippets meant to be
-sourced from the user's own configuration — My Linux never rewrites those files:
+installed independently. Every file is a snippet meant to be imported by the
+user's own configuration — My Linux never rewrites those files:
 
 ```conf
 # ~/.config/hypr/hyprland.conf
@@ -101,6 +109,24 @@ source = ~/.config/hypr/my-linux.conf
 # ~/.config/kitty/kitty.conf
 include ~/.config/kitty/my-linux.conf
 ```
+
+```css
+/* ~/.config/gtk-3.0/gtk.css and ~/.config/gtk-4.0/gtk.css */
+@import url("my-linux.css");
+```
+
+```zsh
+# ~/.zshrc
+source ~/.config/zsh/my-linux.zsh
+```
+
+```lua
+-- ~/.config/nvim/init.lua
+require("my-linux")
+```
+
+Qt needs `QT_QPA_PLATFORMTHEME=qt6ct` and the generated scheme selected in
+qt6ct. Btop needs `color_theme = "my-linux"` in `btop.conf`.
 
 An application that is not installed simply never reads its generated file;
 detection only decides whether a reload is attempted.
@@ -194,7 +220,7 @@ desktop/
 ├── core/            # registry wiring, transactions, rollback, history, diagnostics
 ├── theme-engine/    # discovery, schema validation, inheritance, generation
 ├── config-manager/  # atomic install, backups, restore, digests
-├── integrations/    # Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock renderers
+├── integrations/    # one renderer per application (thirteen integrations)
 ├── components/      # shared desktop components (placeholder)
 └── cli/             # the my-linux-theme binary and its integration tests
 themes/              # built-in theme definitions

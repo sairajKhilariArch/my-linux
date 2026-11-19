@@ -908,16 +908,32 @@ desktop is not modified automatically.
 
 ## Phase 5 — Extended application integrations
 
-- [ ] GTK.
-- [ ] Qt.
-- [ ] File manager.
-- [ ] Browser styling where supported.
-- [ ] Zsh.
-- [ ] Editor integrations.
-- [ ] System monitors.
-- [ ] Additional applications.
+**Current phase: Complete**
 
-**Acceptance:** Users can enable individual application integrations without requiring every application to be installed.
+- [x] GTK 3.
+- [x] GTK 4.
+- [x] Qt (qt6ct/qt5ct colour scheme).
+- [x] File manager (Yazi).
+- [ ] Browser styling where supported (no stable configuration format).
+- [x] Zsh prompt and completion colours.
+- [x] Editor integrations (Neovim).
+- [x] System monitors (Btop).
+- [ ] Additional applications (added as real formats become available).
+
+| Integration | Generated file | Validation | Reload | Tests |
+|---|---|---|---|---|
+| GTK 3 (`gtk3`) | `gtk-3.0/my-linux.css` | `@define-color` + balanced braces | next start | Yes |
+| GTK 4 (`gtk4`) | `gtk-4.0/my-linux.css` | `@define-color` + balanced braces | next start | Yes |
+| Qt (`qt`) | `qt6ct/colors/my-linux.conf` | 21 roles per palette | next start | Yes |
+| Zsh (`zsh`) | `zsh/my-linux.zsh` | prompt + completion markers | new shell | Yes |
+| Neovim (`neovim`) | `nvim/lua/my-linux.lua` | API markers + balanced braces | next start | Yes |
+| Yazi (`yazi`) | `yazi/theme.toml` | sections + TOML parse | next start | Yes |
+| Btop (`btop`) | `btop/themes/my-linux.theme` | all keys quoted | next start | Yes |
+
+**Status:** Complete (v0.11.0). Every integration is a dedicated file that the
+user's own configuration imports, so none of them rewrites a live config.
+
+**Acceptance:** Users can enable individual application integrations without requiring every application to be installed. Reloads are attempted only for detected applications and never fail an installation.
 
 ## Phase 6 — Wallpapers and desktop assets
 

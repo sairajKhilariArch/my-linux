@@ -500,7 +500,10 @@ fn integrations_list_shows_the_core_applications() {
 
     let out = stdout(&output);
 
-    for integration in ["waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock"] {
+    for integration in [
+        "waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock", "gtk3", "gtk4", "qt", "zsh",
+        "neovim", "yazi", "btop",
+    ] {
         assert!(out.contains(integration), "{integration} should be listed");
     }
 }
@@ -526,6 +529,37 @@ fn apply_installs_every_integration_configuration() {
     assert!(
         root.read("hyprlock/hyprlock.conf")
             .contains("input-field {")
+    );
+}
+
+#[test]
+fn apply_installs_the_extended_integrations() {
+    let root = TempRoot::new("apply-extended");
+
+    let output = run(root.path(), &["apply", "cyberpunk"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    assert!(
+        root.read("gtk-3.0/my-linux.css")
+            .contains("@define-color my_linux_bg")
+    );
+    assert!(
+        root.read("gtk-4.0/my-linux.css")
+            .contains("popover > contents")
+    );
+    assert!(
+        root.read("qt6ct/colors/my-linux.conf")
+            .contains("[ColorScheme]")
+    );
+    assert!(
+        root.read("zsh/my-linux.zsh")
+            .contains("PROMPT=\"%F{#FF235A}")
+    );
+    assert!(root.read("nvim/lua/my-linux.lua").contains("nvim_set_hl"));
+    assert!(root.read("yazi/theme.toml").contains("[mgr]"));
+    assert!(
+        root.read("btop/themes/my-linux.theme")
+            .contains("theme[main_bg]")
     );
 }
 

@@ -10,12 +10,19 @@ use std::process::Command;
 
 use theme_engine::LoadedTheme;
 
+pub mod btop;
 pub mod dunst;
+pub mod gtk3;
+pub mod gtk4;
 pub mod hyprland;
 pub mod hyprlock;
 pub mod kitty;
+pub mod neovim;
+pub mod qt;
 pub mod rofi;
 pub mod waybar;
+pub mod yazi;
+pub mod zsh;
 
 #[derive(Debug)]
 pub enum RenderError {
@@ -69,6 +76,13 @@ static INTEGRATIONS: &[&dyn Integration] = &[
     &kitty::Kitty,
     &dunst::Dunst,
     &hyprlock::Hyprlock,
+    &gtk3::Gtk3,
+    &gtk4::Gtk4,
+    &qt::Qt,
+    &zsh::Zsh,
+    &neovim::Neovim,
+    &yazi::Yazi,
+    &btop::Btop,
 ];
 
 /// Every integration, in installation order.
@@ -219,6 +233,13 @@ pub fn validate_braces(content: &str) -> Result<(), RenderError> {
     }
 
     Ok(())
+}
+
+/// Rejects TOML that the application could not parse.
+pub fn validate_toml(content: &str) -> Result<(), RenderError> {
+    toml::from_str::<toml::Value>(content)
+        .map(|_| ())
+        .map_err(|error| RenderError::Invalid(format!("invalid TOML: {error}")))
 }
 
 /// Rejects empty output and output that is missing a required marker.
