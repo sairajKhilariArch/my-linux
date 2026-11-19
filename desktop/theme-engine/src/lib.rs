@@ -1,10 +1,19 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
-    Futuristic,
-    Minimal,
-    Cyberpunk,
-    Nature,
-}
+//! Theme definitions, discovery and colour handling.
+//!
+//! A theme is a TOML palette on disk. Nothing about a theme is compiled into
+//! this crate, so a user can add a theme without touching Rust source code.
+
+pub mod generate;
+pub mod loader;
+pub mod template;
+
+pub use generate::generate_palette;
+pub use loader::{
+    BrokenTheme, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError, ThemeLocation,
+    ThemeMetadata, ThemeSource, ThemeSummary, load_theme, load_theme_by_id, load_theme_by_name,
+    parse_color, validate_id,
+};
+pub use template::{render_from_parts, render_theme_toml};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -21,85 +30,43 @@ impl Color {
     pub fn to_hex(self) -> String {
         format!("#{:02X}{:02X}{:02X}", self.red, self.green, self.blue)
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub struct Palette {
-    pub background: Color,
-    pub surface: Color,
-    pub text: Color,
-    pub muted_text: Color,
-    pub accent: Color,
-    pub accent_secondary: Color,
-}
+    /// Parses `#RRGGBB` or `RRGGBB`.
+    pub fn from_hex(value: &str) -> Option<Self> {
+        let hex = value.strip_prefix('#').unwrap_or(value);
 
-impl Theme {
-    pub const fn all() -> [Theme; 4] {
-        [
-            Theme::Futuristic,
-            Theme::Minimal,
-            Theme::Cyberpunk,
-            Theme::Nature,
-        ]
+        if hex.len() != 6 || !hex.chars().all(|character| character.is_ascii_hexdigit()) {
+            return None;
+        }
+
+        Some(Self::new(
+            u8::from_str_radix(&hex[0..2], 16).ok()?,
+            u8::from_str_radix(&hex[2..4], 16).ok()?,
+            u8::from_str_radix(&hex[4..6], 16).ok()?,
+        ))
     }
 
-    pub const fn name(self) -> &'static str {
-        match self {
-            Theme::Futuristic => "Futuristic",
-            Theme::Minimal => "Minimal",
-            Theme::Cyberpunk => "Cyberpunk",
-            Theme::Nature => "Nature",
-        }
+    /// Blends towards `other`; `amount` is clamped to `0.0..=1.0`.
+    pub fn mix(self, other: Color, amount: f32) -> Color {
+        let amount = amount.clamp(0.0, 1.0);
+
+        let blend = |from: u8, to: u8| {
+            (f32::from(from) * (1.0 - amount) + f32::from(to) * amount).round() as u8
+        };
+
+        Color::new(
+            blend(self.red, other.red),
+            blend(self.green, other.green),
+            blend(self.blue, other.blue),
+        )
     }
 
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "futuristic" => Some(Theme::Futuristic),
-            "minimal" => Some(Theme::Minimal),
-            "cyberpunk" => Some(Theme::Cyberpunk),
-            "nature" => Some(Theme::Nature),
-            _ => None,
-        }
+    pub fn lighten(self, amount: f32) -> Color {
+        self.mix(Color::new(255, 255, 255), amount)
     }
 
-    pub const fn palette(self) -> Palette {
-        match self {
-            Theme::Futuristic => Palette {
-                background: Color::new(11, 16, 32),
-                surface: Color::new(24, 34, 56),
-                text: Color::new(235, 242, 255),
-                muted_text: Color::new(145, 165, 195),
-                accent: Color::new(0, 210, 255),
-                accent_secondary: Color::new(150, 80, 255),
-            },
-
-            Theme::Minimal => Palette {
-                background: Color::new(242, 244, 247),
-                surface: Color::new(255, 255, 255),
-                text: Color::new(35, 40, 48),
-                muted_text: Color::new(115, 123, 135),
-                accent: Color::new(80, 100, 125),
-                accent_secondary: Color::new(145, 155, 170),
-            },
-
-            Theme::Cyberpunk => Palette {
-                background: Color::new(12, 8, 18),
-                surface: Color::new(30, 15, 35),
-                text: Color::new(255, 240, 250),
-                muted_text: Color::new(180, 140, 180),
-                accent: Color::new(255, 35, 90),
-                accent_secondary: Color::new(0, 230, 255),
-            },
-
-            Theme::Nature => Palette {
-                background: Color::new(18, 35, 27),
-                surface: Color::new(31, 55, 40),
-                text: Color::new(235, 245, 225),
-                muted_text: Color::new(165, 190, 155),
-                accent: Color::new(110, 190, 90),
-                accent_secondary: Color::new(205, 175, 105),
-            },
-        }
+    pub fn darken(self, amount: f32) -> Color {
+        self.mix(Color::new(0, 0, 0), amount)
     }
 }
 
@@ -108,34 +75,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_four_themes_exist() {
-        assert_eq!(Theme::all().len(), 4);
-    }
-
-    #[test]
-    fn theme_names_are_recognized() {
-        assert_eq!(Theme::from_name("futuristic"), Some(Theme::Futuristic));
-        assert_eq!(Theme::from_name("MINIMAL"), Some(Theme::Minimal));
-        assert_eq!(Theme::from_name("Cyberpunk"), Some(Theme::Cyberpunk));
-        assert_eq!(Theme::from_name("nature"), Some(Theme::Nature));
-        assert_eq!(Theme::from_name("unknown"), None);
-    }
-
-    #[test]
-    fn every_theme_has_a_palette() {
-        for theme in Theme::all() {
-            let palette = theme.palette();
-
-            assert_ne!(palette.background, palette.accent);
-        }
-    }
-
-    #[test]
     fn colors_convert_to_hex() {
-        let color = Color::new(0, 210, 255);
+        assert_eq!(Color::new(0, 210, 255).to_hex(), "#00D2FF");
+    }
 
-        assert_eq!(color.to_hex(), "#00D2FF");
+    #[test]
+    fn parses_hex_colours() {
+        assert_eq!(Color::from_hex("#00D2FF"), Some(Color::new(0, 210, 255)));
+        assert_eq!(Color::from_hex("00d2ff"), Some(Color::new(0, 210, 255)));
+        assert_eq!(Color::from_hex("#GG0000"), None);
+        assert_eq!(Color::from_hex("#123"), None);
+    }
+
+    #[test]
+    fn mixes_colours() {
+        let black = Color::new(0, 0, 0);
+        let white = Color::new(255, 255, 255);
+
+        assert_eq!(black.mix(white, 0.5), Color::new(128, 128, 128));
+        assert_eq!(black.mix(white, 0.0), black);
+        assert_eq!(black.mix(white, 1.0), white);
+        assert_eq!(black.lighten(1.0), white);
+        assert_eq!(white.darken(1.0), black);
     }
 }
-
-pub mod loader;

@@ -2,10 +2,23 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub use config_manager::ConfigError as DesktopConfigError;
 use config_manager::{ConfigError, backup_file, install_content};
-pub use theme_engine::Theme;
-pub use theme_engine::loader::{LoadedTheme, ThemeLoadError};
+
+pub use config_manager;
+pub use theme_engine::{
+    BrokenTheme, Color, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError,
+    ThemeLocation, ThemeMetadata, ThemeSource, ThemeSummary, generate_palette, render_from_parts,
+    render_theme_toml, validate_id,
+};
+
+pub mod render;
+pub mod transaction;
+
+pub use transaction::{
+    ApplyError, ApplyReport, Diagnostic, FileState, HistoryEntry, InstalledEntry, Modification,
+    apply_theme, detect_modifications, diagnose, format_timestamp, installed_entries, read_history,
+    recover_interrupted, restore_theme, rollback_theme,
+};
 
 /// Location of the generated Waybar configuration and its original backup
 /// inside an installation root.
@@ -31,12 +44,12 @@ pub fn waybar_paths(root: impl AsRef<Path>) -> WaybarPaths {
     WaybarPaths::new(root)
 }
 
-/// Loads a desktop theme by name.
+/// Loads a desktop theme by id from a single directory of themes.
 pub fn load_desktop_theme(
     themes_directory: impl AsRef<Path>,
     theme_name: &str,
 ) -> Result<LoadedTheme, ThemeLoadError> {
-    theme_engine::loader::load_theme_by_name(themes_directory, theme_name)
+    Registry::new(vec![themes_directory.as_ref().to_path_buf()]).load(theme_name)
 }
 
 /// Installs generated Waybar CSS into the selected destination.
@@ -255,13 +268,3 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
-
-pub mod render;
-pub mod transaction;
-
-pub use config_manager;
-pub use transaction::{
-    ApplyError, ApplyReport, Diagnostic, FileState, HistoryEntry, InstalledEntry, Modification,
-    apply_theme, detect_modifications, diagnose, format_timestamp, installed_entries, read_history,
-    recover_interrupted, restore_theme, rollback_theme,
-};

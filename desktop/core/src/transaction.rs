@@ -605,21 +605,28 @@ pub fn diagnose(root: impl AsRef<Path>, themes_directory: impl AsRef<Path>) -> V
         ok: themes_directory.is_dir(),
     });
 
-    for theme in crate::Theme::all() {
-        let name = theme.name().to_lowercase();
+    let registry = crate::Registry::new(vec![themes_directory.to_path_buf()]);
+    let discovery = registry.list();
 
-        match crate::load_desktop_theme(themes_directory, &name) {
-            Ok(loaded) => diagnostics.push(Diagnostic {
-                label: format!("Theme {name}"),
-                detail: format!("{} v{}", loaded.metadata.name, loaded.metadata.version),
-                ok: true,
-            }),
-            Err(error) => diagnostics.push(Diagnostic {
-                label: format!("Theme {name}"),
-                detail: error.to_string(),
-                ok: false,
-            }),
-        }
+    for theme in &discovery.themes {
+        diagnostics.push(Diagnostic {
+            label: format!("Theme {}", theme.id),
+            detail: format!(
+                "{} v{} ({})",
+                theme.name,
+                theme.version,
+                theme.source.label()
+            ),
+            ok: true,
+        });
+    }
+
+    for broken in &discovery.broken {
+        diagnostics.push(Diagnostic {
+            label: format!("Theme {}", broken.path.display()),
+            detail: broken.error.clone(),
+            ok: false,
+        });
     }
 
     let active = crate::read_active_theme(root);
@@ -629,7 +636,7 @@ pub fn diagnose(root: impl AsRef<Path>, themes_directory: impl AsRef<Path>) -> V
         detail: active.clone().unwrap_or_else(|| "none".to_string()),
         ok: active
             .as_deref()
-            .map(|name| crate::load_desktop_theme(themes_directory, name).is_ok())
+            .map(|name| registry.load(name).is_ok())
             .unwrap_or(true),
     });
 

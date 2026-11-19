@@ -5,6 +5,34 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-19
+
+### Added
+
+- Dynamic theme discovery: `Registry` searches one or more theme roots in
+  order, lists valid themes with their source and reports broken theme files
+  instead of hiding them. Directory themes (`<id>/colors/palette.toml`) and
+  single-file themes (`<id>.toml`) are both supported.
+- Theme schema versioning: `schema` in `[theme]`, `SCHEMA_VERSION` and a
+  dedicated `UnsupportedSchema` error for themes written for a newer build.
+- Theme metadata validation: id syntax, id/directory agreement, non-empty name
+  and description, and `MAJOR.MINOR.PATCH` versions, with specific errors.
+- Theme inheritance: `extends = "parent"` merges the parent palette and only
+  overrides the colours the child defines, with cycle detection.
+- Palette generation from a single seed colour (`generate_palette`), using HSL
+  normalisation so unusual seeds still produce a readable dark theme.
+- Theme serialisation (`render_theme_toml`, `render_from_parts`) so a theme can
+  be exported and re-imported without loss.
+- `Color::from_hex`, `Color::mix`, `lighten` and `darken`.
+
+### Changed
+
+- Removed the hard-coded `Theme` enum and its duplicate palettes. Palettes now
+  come only from TOML, so a theme can be added or changed without touching Rust
+  source code.
+- `LoadedTheme` reports the path it was loaded from.
+- Diagnostics list every discovered theme and every invalid theme file.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added
