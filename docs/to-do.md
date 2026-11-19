@@ -12,9 +12,9 @@
 **Development Branch:** main  
 **Project Type:** Independent Linux Desktop Customization Platform
 
-**Status:** Phases 1–8 complete (v0.14.0). The CLI manages themes, integrations,
-wallpapers, assets and profiles with transactions, rollback and diagnostics.
-The graphical application, packaging and the extension ecosystem remain.
+**Status:** Phases 1–9 complete (v0.15.0). The CLI and the native GUI manage
+themes, integrations, wallpapers, assets and profiles with transactions,
+rollback and diagnostics. Packaging and the extension ecosystem remain.
 
 ---
 
@@ -1033,17 +1033,35 @@ attention, and failed operations stay visible in `logs`.
 
 ## Phase 9 — Graphical user interface
 
-- [ ] GUI architecture.
-- [ ] Dashboard.
-- [ ] Theme gallery.
-- [ ] Theme preview.
-- [ ] Theme editor.
-- [ ] Application manager.
-- [ ] Wallpaper manager.
-- [ ] Profile manager.
-- [ ] Backup and recovery UI.
-- [ ] Settings.
-- [ ] Light and dark interface.
+**Current phase: Complete**
+
+- [x] GUI architecture.
+- [x] Dashboard.
+- [x] Theme gallery.
+- [x] Theme preview.
+- [x] Theme editor.
+- [x] Application manager.
+- [x] Wallpaper manager.
+- [x] Profile manager.
+- [x] Backup and recovery UI.
+- [x] Settings.
+- [x] Light and dark interface.
+
+| Area | Implementation |
+|---|---|
+| Framework | `desktop/gui`, eframe/egui over `desktop-core`, binary `my-linux-gui` |
+| Dashboard | Active theme/profile/wallpaper/assets, counts, recent events, quick switch |
+| Gallery | Swatch cards, apply, palette inspector, export, import, remove |
+| Editor | Base theme, nine colour pickers, derived component states, save / save+apply |
+| Applications | Detection, generated-file state, per-integration include, asset settings |
+| Wallpapers | Library, palette proposal, save theme, save+apply, history |
+| Profiles | Apply, export, create, import, restore previous |
+| Recovery | Doctor, rollback, restore, recover, files, backups, history, events |
+| Appearance | Light/dark toggle, consistent spacing and typography |
+
+**Status:** Complete (v0.15.0). The state layer is covered by five tests against
+isolated roots; the window needs a Wayland or X11 session to be displayed, which
+the build environment does not provide.
 
 **Acceptance:** The full platform can be operated without using the terminal.
 

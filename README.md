@@ -6,12 +6,12 @@ format of every supported desktop application.
 
 The project does not depend on HyDE or any other rice framework.
 
-**Status:** Phases 1–4 are complete: foundation, production configuration
-management, the dynamic theme engine, and the core Hyprland integrations
-(Waybar, Rofi, Hyprland, Kitty, notifications, lock screen). The CLI writes into
-an isolated *installation root* that you choose, so it never touches your live
-`~/.config` yet. Profiles, wallpapers, fonts/icons, the GUI and packaging are not
-implemented — see [`docs/to-do.md`](docs/to-do.md) and
+**Status:** Phases 1–9 are complete: foundation, production configuration
+management, the dynamic theme engine, the core Hyprland integrations, extended
+integrations, wallpapers and assets, desktop profiles, state/diagnostics, and a
+native GUI. Everything writes into an isolated *installation root* that you
+choose, so it never touches your live `~/.config` yet. Packaging and the
+extension ecosystem remain — see [`docs/to-do.md`](docs/to-do.md) and
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What works today
@@ -36,7 +36,8 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | Palette extraction from a PNG/JPEG wallpaper | Implemented |
 | Font, icon-theme and cursor-theme discovery and settings | Implemented |
 | Desktop profiles, presets, per-profile wallpapers, profile switching | Implemented |
-| GUI, packaging | Not implemented |
+| Native GUI: dashboard, gallery, editor, applications, wallpapers, profiles, recovery | Implemented |
+| Packaging and release | Not implemented |
 
 ## Build and verify
 
@@ -161,6 +162,22 @@ qt6ct. Btop needs `color_theme = "my-linux"` in `btop.conf`.
 
 An application that is not installed simply never reads its generated file;
 detection only decides whether a reload is attempted.
+
+## Graphical application
+
+`desktop/gui` is a native eframe/egui application built on the same core as the
+CLI. It provides a dashboard, theme gallery, theme editor, application manager,
+wallpaper manager with palette extraction, profile manager and a recovery screen,
+with light and dark modes. It never renders a theme itself and never writes
+outside the installation root.
+
+```bash
+cargo run -p my-linux-gui -- --root /tmp/my-linux-gui
+```
+
+The root defaults to `$MY_LINUX_ROOT` and then to `$XDG_STATE_HOME/my-linux`. The
+GUI compiles and its state layer is tested against isolated roots; opening the
+window itself requires a Wayland or X11 session.
 
 ## State, logs and diagnostics
 
@@ -357,6 +374,7 @@ desktop/
 ├── integrations/    # one renderer per application (thirteen integrations)
 ├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
 ├── profiles/        # profile schema, registry and profile application
+├── gui/             # native graphical application (eframe)
 ├── components/      # shared desktop components (placeholder)
 └── cli/             # the my-linux-theme binary and its integration tests
 themes/              # built-in theme definitions

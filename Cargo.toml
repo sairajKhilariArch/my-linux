@@ -9,9 +9,10 @@ members = [
     "desktop/integrations",
     "desktop/assets",
     "desktop/profiles",
+    "desktop/gui",
     "desktop/cli",
 ]
 
 [workspace.package]
-version = "0.14.0"
+version = "0.15.0"
 edition = "2024"

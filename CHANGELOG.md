@@ -5,6 +5,44 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-11-19
+
+### Added
+
+- New `desktop/gui` crate: a native `my-linux-gui` binary built on eframe/egui
+  that drives the existing `desktop-core` crates. The GUI has no theme engine of
+  its own and writes only inside the selected installation root.
+- Dashboard: active theme, active profile, installed-file count, detected
+  integrations, backups, wallpaper, asset summary and the six most recent events,
+  plus one-click theme switching.
+- Theme gallery: palette cards, apply, palette inspector, base-theme editor,
+  export, import and removal of user themes.
+- Theme editor: start from any theme, edit nine colours with live previews, save
+  a custom theme through the normal registry validation, or save and apply it.
+- Application manager: detection result and generated-file state per integration,
+  per-integration include checkboxes, an "apply selected integrations" action and
+  the list of files changed outside My Linux.
+- Wallpaper manager: library listing, palette extraction preview, save as theme,
+  save and apply, and wallpaper history.
+- Profile manager: apply, export, create, import, and restore the previous
+  profile in one click.
+- Recovery screen: doctor output, rollback, restore originals, interrupted
+  transaction recovery, installed-file state, backups, installation history and
+  the event log.
+- Appearance: light and dark modes, and a `--root` option that defaults to
+  `$MY_LINUX_ROOT` and then to the XDG state directory.
+- Five GUI state tests covering theme/integration discovery, applying and
+  restoring themes, custom theme saving and removal, profile create/apply, and
+  the diagnostics screen.
+
+### Changed
+
+- The workspace now includes `desktop/gui`; `my-linux-theme` and `my-linux-gui`
+  share one core.
+- Phase 9 of the roadmap is complete. The GUI window itself needs a Wayland or
+  X11 session: it was compiled, its `--help` path was run, and its state layer was
+  tested end to end, but the window was not displayed in this environment.
+
 ## [0.14.0] - 2026-11-19
 
 ### Added

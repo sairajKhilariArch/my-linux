@@ -1,0 +1,21 @@
+[package]
+name = "my-linux-gui"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "my_linux_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "my-linux-gui"
+path = "src/main.rs"
+
+[dependencies]
+desktop-core = { path = "../core" }
+eframe = { version = "0.37", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "wayland",
+    "x11",
+] }
