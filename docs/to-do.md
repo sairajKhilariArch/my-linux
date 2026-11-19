@@ -970,16 +970,33 @@ and is applied through the same transaction as any other theme.
 
 ## Phase 7 — Profiles and complete desktop presets
 
-- [ ] Profile schema.
-- [ ] Profile creation.
-- [ ] Profile discovery.
-- [ ] Profile switching.
-- [ ] Profile import/export.
-- [ ] Development preset.
-- [ ] Gaming preset.
-- [ ] Minimal preset.
-- [ ] Custom presets.
-- [ ] Profile rollback.
+**Current phase: Complete**
+
+- [x] Profile schema.
+- [x] Profile creation.
+- [x] Profile discovery.
+- [x] Profile switching.
+- [x] Profile import/export.
+- [x] Development preset (Cyberpunk Developer).
+- [x] Gaming preset.
+- [x] Minimal preset (Minimal Workspace).
+- [x] Nature preset.
+- [x] Custom presets.
+- [x] Profile rollback (restore the previously active profile).
+- [x] Per-profile wallpapers.
+- [x] Profile duplication, editing and removal.
+
+| Area | Implementation |
+|---|---|
+| Schema | `[profile]` identity, theme, wallpaper and integration list; `[assets]`; `[layout]`; schema version 1 |
+| Discovery | built-in `profiles/` presets, user profiles from `$MY_LINUX_USER_PROFILES` shadowing them |
+| Switching | `profile apply <id>`: theme transaction, `hyprland/layout.conf`, asset settings, wallpaper |
+| State | `state/active-profile`, `state/profile-previous`, `state/profile-history.log`; `restore` clears it |
+| Validation | schema, id, version, integration ids, opacity limits and non-zero font/cursor sizes before writing |
+| Presets | `cyberpunk-developer`, `minimal-workspace`, `nature`, `gaming` |
+
+**Status:** Complete (v0.13.0). Applying a profile is one transaction for every
+generated file, including the layout snippet.
 
 **Acceptance:** Users can switch complete desktop configurations with one command.
 

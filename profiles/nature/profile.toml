@@ -1,0 +1,27 @@
+# Apply it with: my-linux-theme profile apply nature
+
+[profile]
+schema = 1
+id = "nature"
+name = "Nature"
+version = "1.0.0"
+description = "Green and earth tones with soft rounding and matching application styling."
+author = "My Linux"
+theme = "nature"
+integrations = ["waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock", "gtk3", "gtk4", "qt", "zsh", "neovim", "yazi", "btop"]
+
+[assets]
+font = "FiraCode Nerd Font"
+font_size = 11
+icon_theme = "Papirus-Dark"
+cursor_theme = "Bibata-Modern-Classic"
+cursor_size = 24
+
+[layout]
+gaps_in = 6
+gaps_out = 14
+border_size = 2
+rounding = 14
+active_opacity = 1.0
+inactive_opacity = 0.96
+blur = true

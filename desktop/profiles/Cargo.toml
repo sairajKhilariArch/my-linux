@@ -1,0 +1,9 @@
+[package]
+name = "desktop-profiles"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+desktop-integrations = { path = "../integrations" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"

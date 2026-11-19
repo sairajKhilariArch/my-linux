@@ -1,0 +1,27 @@
+# Apply it with: my-linux-theme profile apply gaming
+
+[profile]
+schema = 1
+id = "gaming"
+name = "Gaming"
+version = "1.0.0"
+description = "Reduced visual distractions, tight gaps and no blur while gaming."
+author = "My Linux"
+theme = "futuristic"
+integrations = ["waybar", "hyprland", "kitty", "dunst", "hyprlock", "gtk3", "gtk4", "qt"]
+
+[assets]
+font = "Inter"
+font_size = 10
+icon_theme = "Papirus-Dark"
+cursor_theme = "Bibata-Modern-Ice"
+cursor_size = 20
+
+[layout]
+gaps_in = 4
+gaps_out = 8
+border_size = 1
+rounding = 6
+active_opacity = 1.0
+inactive_opacity = 1.0
+blur = false

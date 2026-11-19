@@ -5,6 +5,36 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-11-19
+
+### Added
+
+- New `desktop-profiles` crate: TOML profile schema holding the theme
+  reference, wallpaper, integration list, font/icon/cursor settings and the
+  Hyprland layout, with validation and a registry whose user profiles shadow
+  built-in presets.
+- Four built-in presets in `profiles/`: Cyberpunk Developer, Minimal Workspace,
+  Nature and Gaming.
+- `profile list`, `info`, `preview`, `create`, `set`, `duplicate`, `remove`,
+  `import`, `export`, `apply`, `restore` and `current`.
+- `profile apply` configures a whole desktop with one command: the theme across
+  the profile's integrations, a generated `hyprland/layout.conf` snippet, the
+  font/icon/cursor settings and the profile wallpaper.
+- The layout snippet is installed inside the theme transaction through the new
+  `apply_theme_with_extra`, so rollback and restore treat it like any other
+  generated file.
+- `state/active-profile` and `state/profile-previous` track the active profile;
+  `status` and `profile current` report it, and `profile restore` re-applies the
+  previously active one.
+- Validation happens before the first write: schema, ids, version, integration
+  ids, opacities and non-zero font/cursor sizes.
+- 9 profile tests, 4 core profile-application tests and 2 CLI end-to-end tests.
+
+### Changed
+
+- `restore` also clears the recorded active profile.
+- Phase 7 of the roadmap is complete.
+
 ## [0.12.0] - 2026-11-19
 
 ### Added

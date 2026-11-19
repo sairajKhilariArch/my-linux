@@ -34,7 +34,8 @@ implemented — see [`docs/to-do.md`](docs/to-do.md) and
 | Wallpaper library, preview, switching, history and restore | Implemented |
 | Palette extraction from a PNG/JPEG wallpaper | Implemented |
 | Font, icon-theme and cursor-theme discovery and settings | Implemented |
-| Profiles, GUI, packaging | Not implemented |
+| Desktop profiles, presets, per-profile wallpapers, profile switching | Implemented |
+| GUI, packaging | Not implemented |
 
 ## Build and verify
 
@@ -89,6 +90,17 @@ cargo build --workspace
 ./target/debug/my-linux-theme assets status
 ./target/debug/my-linux-theme assets set --icon-theme Papirus --cursor-theme Bibata --cursor-size 28
 ./target/debug/my-linux-theme assets install ./Inter-Regular.ttf
+
+# Profiles
+./target/debug/my-linux-theme profile list
+./target/debug/my-linux-theme profile info cyberpunk-developer
+./target/debug/my-linux-theme profile preview nature
+./target/debug/my-linux-theme profile create my-desktop --from nature
+./target/debug/my-linux-theme profile set my-desktop rounding 4
+./target/debug/my-linux-theme profile apply my-desktop
+./target/debug/my-linux-theme profile restore
+./target/debug/my-linux-theme profile export my-desktop ./my-desktop.toml
+./target/debug/my-linux-theme profile remove my-desktop
 ```
 
 `--root <directory>` picks the installation root (default `$MY_LINUX_ROOT`,
@@ -172,6 +184,53 @@ and stores the chosen font, icon theme, cursor theme and sizes in
 `hyprland/assets.conf`, a snippet you source from your own Hyprland
 configuration; `--reload` additionally runs `hyprctl setcursor`.
 
+## Profiles
+
+A profile is a complete desktop: theme, wallpaper, the integrations to install,
+font and icon settings and the window-manager layout. Built-in presets live in
+`profiles/`, user profiles in `$MY_LINUX_USER_PROFILES` (default
+`$XDG_DATA_HOME/my-linux/profiles`), and user profiles shadow built-ins.
+
+```toml
+[profile]
+schema = 1
+id = "cyberpunk-developer"
+name = "Cyberpunk Developer"
+version = "1.0.0"
+description = "Neon developer desktop."
+theme = "cyberpunk"
+wallpaper = "/home/me/Wallpapers/neon.png"   # optional; path or library name
+integrations = ["waybar", "rofi", "hyprland", "kitty"]  # empty = everything
+
+[assets]
+font = "JetBrainsMono Nerd Font"
+font_size = 11
+icon_theme = "Papirus-Dark"
+cursor_theme = "Bibata-Modern-Ice"
+cursor_size = 24
+
+[layout]
+gaps_in = 5
+gaps_out = 12
+border_size = 2
+rounding = 10
+active_opacity = 1.0
+inactive_opacity = 0.95
+blur = true
+```
+
+`profile apply <id>` is the single switching command: it renders the theme for
+the profile's integrations, writes `hyprland/layout.conf`, stores the asset
+settings and records the wallpaper. The layout file is installed inside the
+theme transaction, so `rollback` and `restore` handle it like any other
+generated file. The active profile is kept in `state/active-profile` and the one
+before it in `state/profile-previous`, which `profile restore` re-applies.
+
+Built-in presets: `cyberpunk-developer`, `minimal-workspace`, `nature` and
+`gaming`. `profile create` starts from a theme or copies an existing profile;
+`profile set` edits one field at a time; `profile import` and `profile export`
+move profiles between machines.
+
 ## Themes
 
 A theme is a TOML palette. Built-in themes live in `themes/`, user themes in
@@ -225,6 +284,8 @@ Validation rules:
 ├── waybar.css
 ├── rofi/theme.rasi
 ├── hyprland/my-linux.conf
+├── hyprland/layout.conf               # generated from the applied profile
+├── hyprland/assets.conf               # generated from the asset settings
 ├── kitty/my-linux.conf
 ├── dunst/dunstrc
 ├── hyprlock/hyprlock.conf
@@ -239,6 +300,9 @@ Validation rules:
     ├── wallpaper                     # active wallpaper path
     ├── wallpaper-previous
     ├── wallpaper-history.log
+    ├── active-profile
+    ├── profile-previous
+    ├── profile-history.log
     └── assets.conf
 ```
 
@@ -267,6 +331,7 @@ desktop/
 ├── config-manager/  # atomic install, backups, restore, digests
 ├── integrations/    # one renderer per application (thirteen integrations)
 ├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
+├── profiles/        # profile schema, registry and profile application
 ├── components/      # shared desktop components (placeholder)
 └── cli/             # the my-linux-theme binary and its integration tests
 themes/              # built-in theme definitions

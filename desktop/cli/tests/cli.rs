@@ -751,6 +751,118 @@ fn wallpaper_and_asset_state_are_recorded() {
 }
 
 #[test]
+fn profile_commands_manage_user_profiles() {
+    let root = TempRoot::new("profiles");
+    let user_profiles = root.join("profiles");
+    let export_file = root.join("copy.toml");
+
+    let env = [("MY_LINUX_USER_PROFILES", user_profiles.to_str().unwrap())];
+
+    let list = run_env(root.path(), &["profile", "list"], &env);
+    assert!(list.status.success(), "{}", stderr(&list));
+
+    for id in [
+        "cyberpunk-developer",
+        "minimal-workspace",
+        "nature",
+        "gaming",
+    ] {
+        assert!(stdout(&list).contains(id), "{id} should be listed");
+    }
+
+    let create = run_env(
+        root.path(),
+        &["profile", "create", "my-desktop", "--theme", "nature"],
+        &env,
+    );
+    assert!(create.status.success(), "{}", stderr(&create));
+    assert!(user_profiles.join("my-desktop/profile.toml").is_file());
+
+    let set = run_env(
+        root.path(),
+        &["profile", "set", "my-desktop", "font", "Inter"],
+        &env,
+    );
+    assert!(set.status.success(), "{}", stderr(&set));
+
+    let info = run_env(root.path(), &["profile", "info", "my-desktop"], &env);
+    assert!(info.status.success(), "{}", stderr(&info));
+    assert!(stdout(&info).contains("Inter"));
+    assert!(stdout(&info).contains("nature"));
+
+    let duplicate = run_env(
+        root.path(),
+        &["profile", "duplicate", "my-desktop", "copy-desktop"],
+        &env,
+    );
+    assert!(duplicate.status.success(), "{}", stderr(&duplicate));
+
+    let export = run_env(
+        root.path(),
+        &[
+            "profile",
+            "export",
+            "copy-desktop",
+            export_file.to_str().unwrap(),
+        ],
+        &env,
+    );
+    assert!(export.status.success(), "{}", stderr(&export));
+    assert!(export_file.is_file());
+
+    let remove = run_env(root.path(), &["profile", "remove", "my-desktop"], &env);
+    assert!(remove.status.success(), "{}", stderr(&remove));
+    assert!(!user_profiles.join("my-desktop").exists());
+
+    let builtin = run_env(root.path(), &["profile", "remove", "gaming"], &env);
+    assert!(!builtin.status.success());
+    assert!(stderr(&builtin).contains("Built-in"));
+}
+
+#[test]
+fn applying_a_profile_applies_theme_layout_and_assets() {
+    let root = TempRoot::new("profile-apply");
+    let user_profiles = root.join("profiles");
+    let user_themes = root.join("themes");
+
+    fs::create_dir_all(&user_themes).unwrap();
+
+    let env = [
+        ("MY_LINUX_USER_PROFILES", user_profiles.to_str().unwrap()),
+        ("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap()),
+    ];
+
+    let apply = run_env(
+        root.path(),
+        &["profile", "apply", "cyberpunk-developer", "--no-set"],
+        &env,
+    );
+    assert!(apply.status.success(), "{}", stderr(&apply));
+    assert!(stdout(&apply).contains("Profile applied successfully."));
+
+    assert!(root.join("waybar.css").is_file());
+    assert!(root.read("hyprland/layout.conf").contains("gaps_out = 12"));
+    assert!(root.read("state/assets.conf").contains("cursor_size=24"));
+    assert!(
+        root.read("state/active-profile")
+            .contains("cyberpunk-developer")
+    );
+
+    let status = run_env(root.path(), &["status"], &env);
+    assert!(stdout(&status).contains("Active profile:   cyberpunk-developer"));
+
+    let current = run_env(root.path(), &["profile", "current"], &env);
+    assert!(stdout(&current).contains("Active profile: cyberpunk-developer"));
+
+    let restore = run_env(root.path(), &["restore"], &env);
+    assert!(restore.status.success(), "{}", stderr(&restore));
+    assert!(!root.join("hyprland/layout.conf").exists());
+
+    let current = run_env(root.path(), &["profile", "current"], &env);
+    assert!(stdout(&current).contains("Active profile: none"));
+}
+
+#[test]
 fn help_is_printed_without_arguments() {
     let root = TempRoot::new("help");
     let output = run(root.path(), &[]);

@@ -15,6 +15,9 @@ use desktop_core::assets::{
     discover, extract_palette, hyprland_assets_file, install_asset, installed_assets,
     read_settings, remove_asset, render_preview, save_theme, set_wallpaper, write_settings,
 };
+use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
+use desktop_core::profiles::{Profile, ProfileRegistry};
+use desktop_core::{read_active_profile, read_previous_profile};
 
 use std::env;
 use std::fs;
@@ -75,6 +78,26 @@ Asset commands:
   assets installed         List assets in the My Linux library
   assets remove <name> [--kind font|icon|cursor]
                            Remove an installed asset
+
+Profile commands:
+  profile list             List built-in and user profiles
+  profile info <id>        Show a profile's theme, assets and layout
+  profile preview <id>     Show a profile with theme colour swatches
+  profile create <id> [--name <name>] [--theme <theme>] [--from <profile>]
+                           Create a user profile
+  profile set <id> <field> <value>
+                           Change one profile field
+  profile duplicate <from> <to>
+                           Copy a profile
+  profile remove <id>      Remove a user profile
+  profile import <path> [--as <id>]
+                           Import a profile TOML file
+  profile export <id> [file]
+                           Export a profile as TOML
+  profile apply <id> [--reload] [--no-set]
+                           Apply a complete desktop profile
+  profile restore          Apply the previously active profile
+  profile current          Show the active and previous profiles
 
 Recovery commands:
   backup list              List configuration backups
@@ -503,6 +526,10 @@ fn command_status(root: &Path) {
     println!("My Linux status");
     println!("Root:             {}", root.display());
     println!("Active theme:     {}", active);
+    println!(
+        "Active profile:   {}",
+        read_active_profile(root).unwrap_or_else(|| "none".to_string())
+    );
     println!("Configuration:    {}", describe(&path));
     println!("Original backup:  {}", describe(&backup));
 
@@ -1123,6 +1150,492 @@ fn command_assets(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+fn builtin_profiles_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../profiles")
+}
+
+fn user_profiles_dir() -> PathBuf {
+    if let Some(directory) = env::var_os("MY_LINUX_USER_PROFILES") {
+        return PathBuf::from(directory);
+    }
+
+    let data_home = env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from(".local/share"));
+
+    data_home.join("my-linux").join("profiles")
+}
+
+fn profile_registry() -> ProfileRegistry {
+    ProfileRegistry::new(builtin_profiles_dir(), user_profiles_dir())
+}
+
+fn print_profile(profile: &Profile) {
+    println!("{}", profile.metadata.name);
+    println!("  id:           {}", profile.metadata.id);
+    println!("  version:      {}", profile.metadata.version);
+    println!("  schema:       {}", profile.metadata.schema);
+    println!("  theme:        {}", profile.metadata.theme);
+    println!(
+        "  wallpaper:    {}",
+        profile.metadata.wallpaper.as_deref().unwrap_or("none")
+    );
+    println!("  description:  {}", profile.metadata.description);
+    println!("  path:         {}", profile.path.display());
+    println!(
+        "  integrations: {}",
+        if profile.metadata.integrations.is_empty() {
+            "all".to_string()
+        } else {
+            profile.metadata.integrations.join(", ")
+        }
+    );
+    println!();
+    println!("Assets:");
+    println!(
+        "  font:        {}",
+        profile.assets.font.as_deref().unwrap_or("system default")
+    );
+    println!("  font size:   {}", profile.assets.font_size);
+    println!(
+        "  icon theme:  {}",
+        profile
+            .assets
+            .icon_theme
+            .as_deref()
+            .unwrap_or("system default")
+    );
+    println!(
+        "  cursor:      {} ({})",
+        profile
+            .assets
+            .cursor_theme
+            .as_deref()
+            .unwrap_or("system default"),
+        profile.assets.cursor_size
+    );
+    println!();
+    println!("Layout:");
+    println!(
+        "  gaps:        {} in / {} out",
+        profile.layout.gaps_in, profile.layout.gaps_out
+    );
+    println!("  border:      {}", profile.layout.border_size);
+    println!("  rounding:    {}", profile.layout.rounding);
+    println!(
+        "  opacity:     {:.2} active / {:.2} inactive",
+        profile.layout.active_opacity, profile.layout.inactive_opacity
+    );
+    println!(
+        "  blur:        {}",
+        if profile.layout.blur { "on" } else { "off" }
+    );
+}
+
+fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let subcommand = rest.first().map(String::as_str).unwrap_or("list");
+    let args = &rest[1..];
+    let profiles = profile_registry();
+
+    match subcommand {
+        "list" => {
+            let summaries = profiles.list();
+
+            println!("Desktop profiles:");
+
+            for summary in &summaries {
+                println!(
+                    "  - {:<22} {:<26} theme {:<12} {:<18} ({})",
+                    summary.id,
+                    summary.name,
+                    summary.theme,
+                    if summary.integrations == 0 {
+                        "all integrations".to_string()
+                    } else {
+                        format!("{} integrations", summary.integrations)
+                    },
+                    summary.source.label()
+                );
+            }
+
+            if summaries.is_empty() {
+                println!("  none");
+            }
+
+            println!();
+            println!("User profiles: {}", profiles.user_root().display());
+        }
+
+        "info" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile info <id>")?;
+            let profile = profiles.load(id)?;
+
+            print_profile(&profile);
+        }
+
+        "preview" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile preview <id>")?;
+            let profile = profiles.load(id)?;
+
+            print_profile(&profile);
+            println!();
+            println!("Theme colours ({}):", profile.metadata.theme);
+
+            let theme = registry().load(&profile.metadata.theme)?;
+            let colors = &theme.colors;
+
+            color_block(&colors.background.to_hex(), "Background");
+            color_block(&colors.surface.to_hex(), "Surface");
+            color_block(&colors.primary.to_hex(), "Primary");
+            color_block(&colors.secondary.to_hex(), "Secondary");
+            color_block(&colors.text.to_hex(), "Text");
+            color_block(&colors.border.to_hex(), "Border");
+        }
+
+        "create" => {
+            let id = args.first().ok_or(
+                "Usage: my-linux-theme profile create <id> [--name <name>] [--theme <theme>] [--from <profile>]",
+            )?;
+            let id = sanitize_id(id);
+
+            if profiles.find(&id).is_some() {
+                return Err(format!("Profile `{id}` already exists").into());
+            }
+
+            let name = value_of(args, "--name")
+                .map(str::to_string)
+                .unwrap_or_else(|| display_name(&id));
+
+            let mut profile = match value_of(args, "--from") {
+                Some(source) => {
+                    let mut profile = profiles.load(source)?;
+
+                    profile.metadata.id = id.clone();
+                    profile.metadata.name = name.clone();
+                    profile
+                }
+                None => {
+                    let theme = value_of(args, "--theme").unwrap_or("cyberpunk");
+
+                    registry().load(theme)?;
+                    Profile::new(&id, &name, theme)?
+                }
+            };
+
+            if let Some(theme) = value_of(args, "--theme") {
+                registry().load(theme)?;
+                profile.metadata.theme = theme.to_string();
+            }
+
+            profile.normalize();
+            profile.validate()?;
+
+            let file = profiles.save(&profile)?;
+
+            println!(
+                "Created profile {} ({})",
+                profile.metadata.name,
+                file.display()
+            );
+        }
+
+        "set" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile set <id> <field> <value>")?;
+            let field = args
+                .get(1)
+                .ok_or("Usage: my-linux-theme profile set <id> <field> <value>")?;
+            let value = args
+                .get(2)
+                .ok_or("Usage: my-linux-theme profile set <id> <field> <value>")?;
+
+            let mut profile = profiles.load(id)?;
+
+            match field.as_str() {
+                "theme" => {
+                    registry().load(value)?;
+                    profile.metadata.theme = value.to_lowercase();
+                }
+                "wallpaper" => {
+                    profile.metadata.wallpaper = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.to_string())
+                    };
+                }
+                "integrations" => {
+                    profile.metadata.integrations = value
+                        .split(',')
+                        .map(|integration| integration.trim().to_string())
+                        .filter(|integration| !integration.is_empty())
+                        .collect();
+                }
+                "font" => {
+                    profile.assets.font = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.to_string())
+                    };
+                }
+                "font-size" => {
+                    profile.assets.font_size =
+                        value.parse().map_err(|_| "font-size requires a number")?;
+                }
+                "icon-theme" => {
+                    profile.assets.icon_theme = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.to_string())
+                    };
+                }
+                "cursor-theme" => {
+                    profile.assets.cursor_theme = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.to_string())
+                    };
+                }
+                "cursor-size" => {
+                    profile.assets.cursor_size =
+                        value.parse().map_err(|_| "cursor-size requires a number")?;
+                }
+                "gaps-in" => {
+                    profile.layout.gaps_in =
+                        value.parse().map_err(|_| "gaps-in requires a number")?;
+                }
+                "gaps-out" => {
+                    profile.layout.gaps_out =
+                        value.parse().map_err(|_| "gaps-out requires a number")?;
+                }
+                "border-size" => {
+                    profile.layout.border_size =
+                        value.parse().map_err(|_| "border-size requires a number")?;
+                }
+                "rounding" => {
+                    profile.layout.rounding =
+                        value.parse().map_err(|_| "rounding requires a number")?;
+                }
+                "active-opacity" => {
+                    profile.layout.active_opacity = value
+                        .parse()
+                        .map_err(|_| "active-opacity requires a number between 0 and 1")?;
+                }
+                "inactive-opacity" => {
+                    profile.layout.inactive_opacity = value
+                        .parse()
+                        .map_err(|_| "inactive-opacity requires a number between 0 and 1")?;
+                }
+                "blur" => {
+                    profile.layout.blur = matches!(value.as_str(), "true" | "on" | "yes" | "1");
+                }
+                other => {
+                    return Err(format!(
+                        "Unknown profile field `{other}`. Fields: theme, wallpaper, integrations, font, font-size, icon-theme, cursor-theme, cursor-size, gaps-in, gaps-out, border-size, rounding, active-opacity, inactive-opacity, blur"
+                    )
+                    .into());
+                }
+            }
+
+            profile.normalize();
+            profile.validate()?;
+
+            let file = profiles.save(&profile)?;
+
+            println!("Updated {} ({})", profile.metadata.name, file.display());
+        }
+
+        "duplicate" => {
+            let from = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile duplicate <from> <to>")?;
+            let to = args
+                .get(1)
+                .ok_or("Usage: my-linux-theme profile duplicate <from> <to>")?;
+            let to = sanitize_id(to);
+
+            if profiles.find(&to).is_some() {
+                return Err(format!("Profile `{to}` already exists").into());
+            }
+
+            let mut profile = profiles.load(from)?;
+
+            profile.metadata.id = to.clone();
+            profile.metadata.name = display_name(&to);
+
+            let file = profiles.save(&profile)?;
+
+            println!(
+                "Duplicated {} as {} ({})",
+                from,
+                profile.metadata.name,
+                file.display()
+            );
+        }
+
+        "remove" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile remove <id>")?;
+            let removed = profiles.remove(id)?;
+
+            println!("Removed profile: {}", removed.display());
+        }
+
+        "import" => {
+            let path = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile import <path> [--as <id>]")?;
+            let mut profile = Profile::from_path(path)?;
+
+            if let Some(id) = value_of(args, "--as") {
+                profile.metadata.id = sanitize_id(id);
+                profile.normalize();
+                profile.validate()?;
+            }
+
+            if profiles.find(&profile.metadata.id).is_some() {
+                return Err(format!("Profile `{}` already exists", profile.metadata.id).into());
+            }
+
+            let file = profiles.save(&profile)?;
+
+            println!(
+                "Imported profile {} ({})",
+                profile.metadata.name,
+                file.display()
+            );
+        }
+
+        "export" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile export <id> [file]")?;
+            let profile = profiles.load(id)?;
+            let rendered = profile.to_toml()?;
+
+            match args.get(1) {
+                Some(path) => {
+                    fs::write(path, rendered)?;
+                    println!("Exported {} to {path}", profile.metadata.name);
+                }
+                None => print!("{rendered}"),
+            }
+        }
+
+        "apply" => {
+            let id = args
+                .first()
+                .ok_or("Usage: my-linux-theme profile apply <id> [--reload] [--no-set]")?;
+            let profile = profiles.load(id)?;
+            let theme = registry().load(&profile.metadata.theme)?;
+
+            let report = apply_profile(
+                root,
+                &profile,
+                &theme,
+                &ProfileApplyOptions {
+                    set_wallpaper: !has_flag(args, "--no-set"),
+                    reload: has_flag(args, "--reload"),
+                },
+            )?;
+
+            println!("Profile applied successfully.");
+            println!(
+                "Profile:   {} ({})",
+                profile.metadata.name, report.profile_id
+            );
+            println!("Theme:     {} ({})", theme.metadata.name, report.theme_id);
+            println!(
+                "Layout:    {}",
+                destination(root, &report.layout_file).display()
+            );
+            println!("Assets:    {}", report.asset_snippet.display());
+
+            for file in &report.installed_files {
+                println!("Installed: {}", destination(root, file).display());
+            }
+
+            match &report.wallpaper {
+                Some(path) => println!("Wallpaper: {}", path.display()),
+                None => println!("Wallpaper: unchanged"),
+            }
+
+            for command in &report.wallpaper_commands {
+                println!("Applied:   {command}");
+            }
+
+            for command in &report.reloaded {
+                println!("Reloaded:  {command}");
+            }
+
+            for warning in &report.warnings {
+                println!("Warning:   {warning}");
+            }
+
+            if report.reloaded.is_empty() {
+                println!("Reload:    skipped (pass --reload to reload running applications)");
+            }
+        }
+
+        "restore" => {
+            let id = read_previous_profile(root).ok_or("No previous profile is recorded")?;
+            let profile = profiles.load(&id)?;
+            let theme = registry().load(&profile.metadata.theme)?;
+
+            let report = apply_profile(
+                root,
+                &profile,
+                &theme,
+                &ProfileApplyOptions {
+                    set_wallpaper: true,
+                    reload: false,
+                },
+            )?;
+
+            println!(
+                "Restored profile {} ({})",
+                profile.metadata.name, report.profile_id
+            );
+
+            for file in &report.installed_files {
+                println!("Installed: {}", destination(root, file).display());
+            }
+
+            for warning in &report.warnings {
+                println!("Warning:   {warning}");
+            }
+        }
+
+        "current" => {
+            println!(
+                "Active profile: {}",
+                read_active_profile(root).unwrap_or_else(|| "none".to_string())
+            );
+
+            if let Some(previous) = read_previous_profile(root) {
+                println!("Previous:       {previous}");
+            }
+
+            println!(
+                "Active theme:   {}",
+                read_active_theme(root).unwrap_or_else(|| "none".to_string())
+            );
+        }
+
+        other => {
+            return Err(format!("Unknown profile command: {other}\n\n{HELP}").into());
+        }
+    }
+
+    Ok(())
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (root_flag, args) = parse_args(env::args().skip(1).collect())?;
 
@@ -1315,6 +1828,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "wallpaper" => command_wallpaper(&root, rest)?,
 
         "assets" => command_assets(&root, rest)?,
+
+        "profile" => command_profile(&root, rest)?,
 
         other => {
             return Err(format!("Unknown command: {other}\n\n{HELP}").into());

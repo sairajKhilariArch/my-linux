@@ -8,14 +8,21 @@ pub use config_manager;
 pub use desktop_assets as assets;
 pub use desktop_integrations as integrations;
 pub use desktop_integrations::{Integration, IntegrationStatus};
+pub use desktop_profiles as profiles;
 pub use theme_engine::{
     BrokenTheme, Color, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError,
     ThemeLocation, ThemeMetadata, ThemeSource, ThemeSummary, generate_palette, render_from_parts,
     render_theme_toml, validate_id,
 };
 
+pub mod profile_apply;
 pub mod render;
 pub mod transaction;
+
+pub use profile_apply::{
+    LAYOUT_RELATIVE_PATH, ProfileApplyError, ProfileApplyOptions, ProfileReport, apply_profile,
+    render_layout,
+};
 
 pub use transaction::{
     ApplyError, ApplyReport, Diagnostic, FileState, HistoryEntry, InstalledEntry, Modification,
@@ -85,6 +92,61 @@ pub fn restore_waybar_theme(
 
 fn active_theme_file(root: &Path) -> PathBuf {
     root.join("state").join("active-theme")
+}
+
+fn active_profile_file(root: &Path) -> PathBuf {
+    root.join("state").join("active-profile")
+}
+
+fn previous_profile_file(root: &Path) -> PathBuf {
+    root.join("state").join("profile-previous")
+}
+
+fn read_state(path: &Path) -> Option<String> {
+    fs::read_to_string(path)
+        .ok()
+        .map(|contents| contents.trim().to_string())
+        .filter(|contents| !contents.is_empty())
+}
+
+/// Records the profile that is currently applied under `root`.
+pub fn write_active_profile(root: impl AsRef<Path>, profile_id: &str) -> Result<(), ConfigError> {
+    let root = root.as_ref();
+
+    if let Some(current) = read_active_profile(root)
+        && current != profile_id
+    {
+        install_content(
+            format!("{current}\n").as_bytes(),
+            previous_profile_file(root),
+        )?;
+    }
+
+    install_content(
+        format!("{profile_id}\n").as_bytes(),
+        active_profile_file(root),
+    )
+}
+
+/// Reads the profile that is currently applied under `root`, if any.
+pub fn read_active_profile(root: impl AsRef<Path>) -> Option<String> {
+    read_state(&active_profile_file(root.as_ref()))
+}
+
+/// Reads the profile applied before the current one, used by `profile restore`.
+pub fn read_previous_profile(root: impl AsRef<Path>) -> Option<String> {
+    read_state(&previous_profile_file(root.as_ref()))
+}
+
+/// Clears the recorded active profile, for example after a full restore.
+pub fn clear_active_profile(root: impl AsRef<Path>) -> Result<(), ConfigError> {
+    let path = active_profile_file(root.as_ref());
+
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Records the theme that is currently installed under `root`.

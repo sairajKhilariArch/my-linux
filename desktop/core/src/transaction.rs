@@ -199,6 +199,7 @@ pub fn format_timestamp(timestamp: u64) -> String {
 fn prepare(
     theme: &LoadedTheme,
     selected: &[&'static dyn Integration],
+    extra: &[(String, String)],
 ) -> Result<Vec<Prepared>, ApplyError> {
     let mut prepared = Vec::new();
 
@@ -215,6 +216,19 @@ fn prepare(
         prepared.push(Prepared {
             relative_path: integration.relative_path().to_string(),
             content: Some(content.into_bytes()),
+        });
+    }
+
+    for (relative_path, content) in extra {
+        if relative_path.trim().is_empty() || content.trim().is_empty() {
+            return Err(ApplyError::Validation(format!(
+                "Generated `{relative_path}` is empty"
+            )));
+        }
+
+        prepared.push(Prepared {
+            relative_path: relative_path.clone(),
+            content: Some(content.clone().into_bytes()),
         });
     }
 
@@ -532,12 +546,25 @@ pub fn apply_theme_with(
     theme: &LoadedTheme,
     selected: &[&'static dyn Integration],
 ) -> Result<ApplyReport, ApplyError> {
+    apply_theme_with_extra(root, theme, selected, &[])
+}
+
+/// Applies a theme plus additional generated files as one transaction.
+///
+/// Desktop profiles use this for the Hyprland layout snippet, so the snippet is
+/// backed up, rolled back and restored exactly like integration files.
+pub fn apply_theme_with_extra(
+    root: impl AsRef<Path>,
+    theme: &LoadedTheme,
+    selected: &[&'static dyn Integration],
+    extra: &[(String, String)],
+) -> Result<ApplyReport, ApplyError> {
     let root = root.as_ref();
 
     fs::create_dir_all(root)?;
     recover_interrupted(root)?;
 
-    let prepared = prepare(theme, selected)?;
+    let prepared = prepare(theme, selected, extra)?;
     let previous_theme = crate::read_active_theme(root);
 
     let created_backups = run_transaction(root, &prepared)?;
@@ -611,6 +638,7 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
 
     remove_file_if_exists(installed_file(root))?;
     crate::clear_active_theme(root)?;
+    crate::clear_active_profile(root)?;
     remove_file_if_exists(previous_theme_file(root))?;
 
     // The original state is now live, so the rollback snapshots are obsolete.

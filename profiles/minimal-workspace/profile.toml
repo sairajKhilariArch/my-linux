@@ -1,0 +1,27 @@
+# Apply it with: my-linux-theme profile apply minimal-workspace
+
+[profile]
+schema = 1
+id = "minimal-workspace"
+name = "Minimal Workspace"
+version = "1.0.0"
+description = "Quiet colours, square corners and no blur for distraction-free work."
+author = "My Linux"
+theme = "minimal"
+integrations = ["waybar", "rofi", "hyprland", "kitty", "dunst", "gtk3"]
+
+[assets]
+font = "Inter"
+font_size = 10
+icon_theme = "Papirus"
+cursor_theme = "Adwaita"
+cursor_size = 24
+
+[layout]
+gaps_in = 8
+gaps_out = 8
+border_size = 1
+rounding = 2
+active_opacity = 1.0
+inactive_opacity = 1.0
+blur = false

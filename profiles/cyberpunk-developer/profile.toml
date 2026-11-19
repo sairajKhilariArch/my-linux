@@ -1,0 +1,27 @@
+# Apply it with: my-linux-theme profile apply cyberpunk-developer
+
+[profile]
+schema = 1
+id = "cyberpunk-developer"
+name = "Cyberpunk Developer"
+version = "1.0.0"
+description = "Neon developer desktop: high-contrast colours, a dense bar and a calm terminal."
+author = "My Linux"
+theme = "cyberpunk"
+integrations = ["waybar", "rofi", "hyprland", "kitty", "dunst", "hyprlock", "gtk3", "gtk4", "qt", "zsh", "neovim", "yazi", "btop"]
+
+[assets]
+font = "JetBrainsMono Nerd Font"
+font_size = 11
+icon_theme = "Papirus-Dark"
+cursor_theme = "Bibata-Modern-Ice"
+cursor_size = 24
+
+[layout]
+gaps_in = 5
+gaps_out = 12
+border_size = 2
+rounding = 10
+active_opacity = 1.0
+inactive_opacity = 0.95
+blur = true
