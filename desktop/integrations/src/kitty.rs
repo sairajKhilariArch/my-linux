@@ -73,6 +73,8 @@ fn terminal_palette(theme: &LoadedTheme) -> [Color; 16] {
 /// Generates a Kitty configuration from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let typography = theme.typography_for("kitty");
+    let metrics = theme.metrics_for("kitty");
 
     let mut output = String::new();
 
@@ -126,11 +128,11 @@ pub fn render(theme: &LoadedTheme) -> String {
         output.push_str(&format!("color{index} {}\n", color.to_hex()));
     }
 
-    output.push_str(&format!("\nfont_family {}\n", theme.typography.mono_family));
+    output.push_str(&format!("\nfont_family {}\n", typography.mono_family));
     output.push_str("bold_font auto\n");
     output.push_str("italic_font auto\n");
-    output.push_str(&format!("font_size {}.0\n", theme.typography.font_size));
-    output.push_str(&format!("window_padding_width {}\n", theme.metrics.spacing));
+    output.push_str(&format!("font_size {}.0\n", typography.font_size));
+    output.push_str(&format!("window_padding_width {}\n", metrics.spacing));
     output.push_str("background_opacity 1.0\n");
     output.push_str("cursor_shape beam\n");
     output.push_str("cursor_blink_interval 0.5\n");

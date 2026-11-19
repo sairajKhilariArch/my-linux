@@ -53,6 +53,8 @@ struct RawThemeFile {
     typography: Option<RawTypography>,
     #[serde(default)]
     metrics: Option<RawMetrics>,
+    #[serde(default)]
+    overrides: Option<BTreeMap<String, RawOverride>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -75,6 +77,79 @@ struct RawMetrics {
     border_width: Option<u8>,
     #[serde(default)]
     opacity: Option<u8>,
+}
+
+/// Per-application overrides of the design tokens.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawOverride {
+    #[serde(default)]
+    font_family: Option<String>,
+    #[serde(default)]
+    mono_family: Option<String>,
+    #[serde(default)]
+    font_size: Option<u16>,
+    #[serde(default)]
+    radius: Option<u8>,
+    #[serde(default)]
+    spacing: Option<u8>,
+    #[serde(default)]
+    border_width: Option<u8>,
+    #[serde(default)]
+    opacity: Option<u8>,
+}
+
+/// Design tokens overridden for one application integration.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThemeOverride {
+    pub font_family: Option<String>,
+    pub mono_family: Option<String>,
+    pub font_size: Option<u16>,
+    pub radius: Option<u8>,
+    pub spacing: Option<u8>,
+    pub border_width: Option<u8>,
+    pub opacity: Option<u8>,
+}
+
+impl ThemeOverride {
+    fn merge(&mut self, raw: &RawOverride) {
+        if let Some(family) = &raw.font_family {
+            self.font_family = Some(family.trim().to_string());
+        }
+
+        if let Some(family) = &raw.mono_family {
+            self.mono_family = Some(family.trim().to_string());
+        }
+
+        if let Some(size) = raw.font_size {
+            self.font_size = Some(size);
+        }
+
+        if let Some(radius) = raw.radius {
+            self.radius = Some(radius);
+        }
+
+        if let Some(spacing) = raw.spacing {
+            self.spacing = Some(spacing);
+        }
+
+        if let Some(border) = raw.border_width {
+            self.border_width = Some(border);
+        }
+
+        if let Some(opacity) = raw.opacity {
+            self.opacity = Some(opacity);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.font_family.is_none()
+            && self.mono_family.is_none()
+            && self.font_size.is_none()
+            && self.radius.is_none()
+            && self.spacing.is_none()
+            && self.border_width.is_none()
+            && self.opacity.is_none()
+    }
 }
 
 /// Typography used by every integration that renders text.
@@ -151,8 +226,46 @@ pub struct LoadedTheme {
     pub colors: ThemeColors,
     pub typography: ThemeTypography,
     pub metrics: ThemeMetrics,
+    /// Per-application token overrides, keyed by integration id.
+    pub overrides: BTreeMap<String, ThemeOverride>,
     /// Directory or file the theme was loaded from.
     pub path: PathBuf,
+}
+
+impl LoadedTheme {
+    /// Typography for `integration`, honouring `[overrides.<id>]`.
+    pub fn typography_for(&self, integration: &str) -> ThemeTypography {
+        let Some(over) = self.overrides.get(integration) else {
+            return self.typography.clone();
+        };
+        let base = &self.typography;
+
+        ThemeTypography {
+            font_family: over
+                .font_family
+                .clone()
+                .unwrap_or_else(|| base.font_family.clone()),
+            mono_family: over
+                .mono_family
+                .clone()
+                .unwrap_or_else(|| base.mono_family.clone()),
+            font_size: over.font_size.unwrap_or(base.font_size),
+        }
+    }
+
+    /// Metrics for `integration`, honouring `[overrides.<id>]`.
+    pub fn metrics_for(&self, integration: &str) -> ThemeMetrics {
+        let Some(over) = self.overrides.get(integration) else {
+            return self.metrics;
+        };
+
+        ThemeMetrics {
+            radius: over.radius.unwrap_or(self.metrics.radius),
+            spacing: over.spacing.unwrap_or(self.metrics.spacing),
+            border_width: over.border_width.unwrap_or(self.metrics.border_width),
+            opacity: over.opacity.unwrap_or(self.metrics.opacity),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -268,6 +381,7 @@ struct ResolvedTheme {
     values: PaletteValues,
     typography: ThemeTypography,
     metrics: ThemeMetrics,
+    overrides: BTreeMap<String, ThemeOverride>,
 }
 
 /// A registry of theme roots searched in order.
@@ -357,6 +471,7 @@ impl Registry {
             colors,
             typography: resolved.typography,
             metrics: resolved.metrics,
+            overrides: resolved.overrides,
             path: entry.path,
         })
     }
@@ -446,6 +561,7 @@ impl Registry {
         let mut values = PaletteValues::default();
         let mut typography = ThemeTypography::default();
         let mut metrics = ThemeMetrics::default();
+        let mut overrides: BTreeMap<String, ThemeOverride> = BTreeMap::new();
 
         if let Some(parent) = &metadata.extends {
             let parent_entry = self
@@ -456,6 +572,7 @@ impl Registry {
             values = parent.values;
             typography = parent.typography;
             metrics = parent.metrics;
+            overrides = parent.overrides;
         }
 
         values.merge(&raw.colors);
@@ -492,14 +609,33 @@ impl Registry {
             }
         }
 
+        if let Some(raw) = &raw.overrides {
+            for (integration, raw) in raw {
+                validate_id(integration)?;
+
+                let entry = overrides.entry(integration.clone()).or_default();
+
+                entry.merge(raw);
+
+                if entry.is_empty() {
+                    overrides.remove(integration);
+                }
+            }
+        }
+
         validate_typography(&typography)?;
         validate_metrics(&metrics)?;
+
+        for (integration, over) in &overrides {
+            validate_override(integration, over)?;
+        }
 
         Ok(ResolvedTheme {
             metadata,
             values,
             typography,
             metrics,
+            overrides,
         })
     }
 }
@@ -613,6 +749,66 @@ fn theme_file(path: &Path) -> Result<PathBuf, ThemeLoadError> {
     }
 
     Err(ThemeLoadError::UnknownTheme(path.display().to_string()))
+}
+
+fn validate_override(integration: &str, over: &ThemeOverride) -> Result<(), ThemeLoadError> {
+    let invalid = |field: &str, value: String| {
+        ThemeLoadError::InvalidMetadata(format!(
+            "overrides.{integration}.{field} {value} is out of range"
+        ))
+    };
+
+    if let Some(size) = over.font_size
+        && !(6..=48).contains(&size)
+    {
+        return Err(invalid("font_size", size.to_string()));
+    }
+
+    if let Some(radius) = over.radius
+        && radius > 32
+    {
+        return Err(invalid("radius", radius.to_string()));
+    }
+
+    if let Some(spacing) = over.spacing
+        && spacing > 48
+    {
+        return Err(invalid("spacing", spacing.to_string()));
+    }
+
+    if let Some(border) = over.border_width
+        && border > 8
+    {
+        return Err(invalid("border_width", border.to_string()));
+    }
+
+    if let Some(opacity) = over.opacity
+        && !(20..=100).contains(&opacity)
+    {
+        return Err(invalid("opacity", opacity.to_string()));
+    }
+
+    if over
+        .font_family
+        .as_deref()
+        .is_some_and(|family| family.trim().is_empty())
+    {
+        return Err(ThemeLoadError::InvalidMetadata(format!(
+            "overrides.{integration}.font_family must not be empty"
+        )));
+    }
+
+    if over
+        .mono_family
+        .as_deref()
+        .is_some_and(|family| family.trim().is_empty())
+    {
+        return Err(ThemeLoadError::InvalidMetadata(format!(
+            "overrides.{integration}.mono_family must not be empty"
+        )));
+    }
+
+    Ok(())
 }
 
 fn validate_typography(typography: &ThemeTypography) -> Result<(), ThemeLoadError> {
@@ -821,6 +1017,73 @@ active = "#FF0000"
 hover = "#00FF00"
 selected = "#222222"
 "##;
+
+    #[test]
+    fn loads_and_round_trips_application_overrides() {
+        let root = scratch("overrides");
+        let contents = format!(
+            "{BASE_THEME}\n[overrides.waybar]\nfont_size = 15\nradius = 2\nmono_family = \"Iosevka\"\n"
+        );
+
+        write_theme(&root, "base", &contents);
+
+        let registry = Registry::new(vec![root.clone()]);
+        let theme = registry.load("base").unwrap();
+
+        assert_eq!(theme.typography_for("waybar").font_size, 15);
+        assert_eq!(theme.typography_for("waybar").mono_family, "Iosevka");
+        assert_eq!(theme.metrics_for("waybar").radius, 2);
+        assert_eq!(theme.typography_for("rofi"), theme.typography);
+        assert_eq!(theme.metrics_for("rofi"), theme.metrics);
+
+        let exported = crate::template::render_theme_toml(&theme);
+
+        assert!(exported.contains("[overrides.waybar]"));
+        assert!(exported.contains("font_size = 15"));
+
+        write_theme(&root, "base", &exported);
+
+        let reloaded = Registry::new(vec![root.clone()]).load("base").unwrap();
+
+        assert_eq!(reloaded.overrides, theme.overrides);
+    }
+
+    #[test]
+    fn rejects_out_of_range_application_overrides() {
+        let root = scratch("bad-overrides");
+
+        write_theme(
+            &root,
+            "base",
+            &format!("{BASE_THEME}\n[overrides.waybar]\nfont_size = 99\n"),
+        );
+
+        let error = Registry::new(vec![root])
+            .load("base")
+            .expect_err("font size 99 must be rejected");
+
+        assert!(error.to_string().contains("overrides.waybar.font_size"));
+    }
+
+    #[test]
+    fn inherits_application_overrides_from_the_parent_theme() {
+        let root = scratch("override-inherit");
+        let child = "[theme]\nschema = 1\nname = \"Child\"\nid = \"child\"\nversion = \"1.0.0\"\n\
+                     description = \"Child\"\nextends = \"base\"\n\n[overrides.kitty]\nfont_size = 14\n";
+
+        write_theme(
+            &root,
+            "base",
+            &format!("{BASE_THEME}\n[overrides.waybar]\nfont_size = 15\n"),
+        );
+        write_theme(&root, "child", child);
+
+        let theme = Registry::new(vec![root]).load("child").unwrap();
+
+        assert_eq!(theme.typography_for("waybar").font_size, 15);
+        assert_eq!(theme.typography_for("kitty").font_size, 14);
+        assert_eq!(theme.colors.background.to_hex(), "#000000");
+    }
 
     #[test]
     fn loads_futuristic_theme() {

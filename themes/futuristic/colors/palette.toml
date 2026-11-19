@@ -36,3 +36,7 @@ radius = 12
 spacing = 6
 border_width = 2
 opacity = 100
+
+# The terminal keeps the mono font but uses a slightly larger size.
+[overrides.kitty]
+font_size = 13

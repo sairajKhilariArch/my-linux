@@ -91,6 +91,7 @@ cargo build --workspace
 # Themes
 ./target/debug/my-linux-theme list
 ./target/debug/my-linux-theme info cyberpunk
+./target/debug/my-linux-theme duplicate cyberpunk cyberpunk-copy
 ./target/debug/my-linux-theme preview cyberpunk
 ./target/debug/my-linux-theme render cyberpunk --integration rofi
 ./target/debug/my-linux-theme create my-theme --from cyberpunk
@@ -358,6 +359,36 @@ selected = "#451B48"
 ```
 
 Accepted layouts: `themes/<id>/colors/palette.toml` or `themes/<id>.toml`.
+
+### Typography, geometry and per-application overrides
+
+A theme can carry shared design tokens and override them for single
+integrations:
+
+```toml
+[typography]
+font_family = "Inter"
+mono_family = "JetBrainsMono Nerd Font"
+font_size = 11
+
+[metrics]
+radius = 8
+spacing = 8
+border_width = 2
+opacity = 100
+
+# Waybar is dense, so only Waybar uses these tokens.
+[overrides.waybar]
+font_size = 10
+radius = 4
+```
+
+Every integration asks for `typography_for(id)` and `metrics_for(id)`, so an
+override changes just that application. Overrides inherit through `extends`
+field by field, are range-validated (`font_size` 6–48, `radius` ≤ 32,
+`spacing` ≤ 48, `border_width` ≤ 8, `opacity` 20–100) and survive export and
+`duplicate`. `info <theme>` lists them, and the GUI theme editor edits them per
+integration alongside border width and opacity.
 
 Validation rules:
 

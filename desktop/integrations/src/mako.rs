@@ -53,7 +53,8 @@ fn hex(color: Color) -> String {
 /// Generates a Mako configuration from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
-    let metrics = theme.metrics;
+    let typography = theme.typography_for("mako");
+    let metrics = theme.metrics_for("mako");
 
     let mut output = String::new();
 
@@ -88,7 +89,7 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str(&format!("border-radius={}\n", metrics.radius));
     output.push_str(&format!(
         "font={} {}\n",
-        theme.typography.font_family, theme.typography.font_size
+        typography.font_family, typography.font_size
     ));
     output.push_str("anchor=top-right\n");
 

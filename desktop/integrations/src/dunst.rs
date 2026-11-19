@@ -42,6 +42,8 @@ impl Integration for Dunst {
 /// Generates a Dunst configuration from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let typography = theme.typography_for("dunst");
+    let metrics = theme.metrics_for("dunst");
 
     let mut output = String::new();
 
@@ -60,9 +62,9 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("    separator_color = frame\n");
     output.push_str(&format!(
         "    font = {} {}\n",
-        theme.typography.mono_family, theme.typography.font_size
+        typography.mono_family, typography.font_size
     ));
-    output.push_str(&format!("    corner_radius = {}\n", theme.metrics.radius));
+    output.push_str(&format!("    corner_radius = {}\n", metrics.radius));
     output.push_str("    transparency = 0\n");
     output.push_str("    icon_position = left\n");
     output.push_str("    format = \"<b>%s</b>\\n%b\"\n\n");

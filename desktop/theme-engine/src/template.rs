@@ -1,6 +1,10 @@
 //! Serialises a theme back to the TOML format understood by the loader.
 
-use crate::loader::{LoadedTheme, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeTypography};
+use std::collections::BTreeMap;
+
+use crate::loader::{
+    LoadedTheme, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeTypography,
+};
 
 fn escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
@@ -14,11 +18,12 @@ pub fn render_theme_toml(theme: &LoadedTheme) -> String {
 
 /// Renders the complete theme definition.
 pub fn render_theme(theme: &LoadedTheme) -> String {
-    render_theme_parts(
+    render_theme_full(
         &theme.metadata,
         &theme.colors,
         &theme.typography,
         theme.metrics,
+        &theme.overrides,
     )
 }
 
@@ -28,6 +33,17 @@ pub fn render_theme_parts(
     colors: &ThemeColors,
     typography: &ThemeTypography,
     metrics: ThemeMetrics,
+) -> String {
+    render_theme_full(metadata, colors, typography, metrics, &BTreeMap::new())
+}
+
+/// Renders a complete theme definition, including application overrides.
+pub fn render_theme_full(
+    metadata: &ThemeMetadata,
+    colors: &ThemeColors,
+    typography: &ThemeTypography,
+    metrics: ThemeMetrics,
+    overrides: &BTreeMap<String, ThemeOverride>,
 ) -> String {
     let mut output = render_colors(metadata, colors);
 
@@ -47,6 +63,38 @@ pub fn render_theme_parts(
     output.push_str(&format!("spacing = {}\n", metrics.spacing));
     output.push_str(&format!("border_width = {}\n", metrics.border_width));
     output.push_str(&format!("opacity = {}\n", metrics.opacity));
+
+    for (integration, over) in overrides {
+        output.push_str(&format!("\n[overrides.{integration}]\n"));
+
+        if let Some(family) = &over.font_family {
+            output.push_str(&format!("font_family = \"{}\"\n", escape(family)));
+        }
+
+        if let Some(family) = &over.mono_family {
+            output.push_str(&format!("mono_family = \"{}\"\n", escape(family)));
+        }
+
+        if let Some(size) = over.font_size {
+            output.push_str(&format!("font_size = {size}\n"));
+        }
+
+        if let Some(radius) = over.radius {
+            output.push_str(&format!("radius = {radius}\n"));
+        }
+
+        if let Some(spacing) = over.spacing {
+            output.push_str(&format!("spacing = {spacing}\n"));
+        }
+
+        if let Some(border) = over.border_width {
+            output.push_str(&format!("border_width = {border}\n"));
+        }
+
+        if let Some(opacity) = over.opacity {
+            output.push_str(&format!("opacity = {opacity}\n"));
+        }
+    }
 
     output
 }

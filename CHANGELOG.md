@@ -5,6 +5,39 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-11-19
+
+### Added
+
+- Application-specific theme overrides. Themes may declare
+  `[overrides.<integration>]` with `font_family`, `mono_family`, `font_size`,
+  `radius`, `spacing`, `border_width` and `opacity`. Integrations ask for
+  `typography_for(id)` / `metrics_for(id)`, so only the named application uses
+  the override and everything else keeps the shared tokens.
+- Overrides inherit through `extends` field by field, are range-validated and
+  round-trip through export. `info <theme>` prints them.
+- `my-linux-theme duplicate <from> <to>` copies colours, typography, metrics and
+  overrides into a new user theme; `create --from` now keeps the parent's tokens
+  and overrides instead of resetting them.
+- GUI theme editor: border width, opacity and a per-integration application
+  override section (font size and corner radius, clearable), saved through the
+  same `save_theme` path as every other edit.
+- Cyberpunk now ships a Waybar override (font size 10, radius 4) and Futuristic
+  a Kitty override (font size 13), so the feature is visible in bundled themes.
+
+### Tests
+
+- Theme loader: override parsing, token merging, inheritance and out-of-range
+  rejection; rendering and round-trip of override sections.
+- Waybar: renders its own overridden tokens.
+- CLI: `duplicate` preserves overrides, `info` lists them, duplicate ids fail,
+  and `create --from` keeps the parent palette with its overrides.
+- GUI: `save_theme` persists overrides and reloads them through the registry.
+
+### Changed
+
+- Workspace version 0.22.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.21.0] - 2026-11-19
 
 ### Added

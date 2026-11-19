@@ -42,6 +42,7 @@ impl Integration for Rofi {
 /// Generates a Rofi RASI theme from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let metrics = theme.metrics_for("rofi");
     let hex = |color: theme_engine::Color| color.to_hex();
 
     let mut output = String::new();
@@ -69,10 +70,7 @@ pub fn render(theme: &LoadedTheme) -> String {
         "    border: 2px;\n    border-color: {};\n",
         hex(colors.border)
     ));
-    output.push_str(&format!(
-        "    border-radius: {}px;\n",
-        theme.metrics.radius + 4
-    ));
+    output.push_str(&format!("    border-radius: {}px;\n", metrics.radius + 4));
     output.push_str("    width: 40%;\n");
     output.push_str("}\n\n");
 
@@ -84,8 +82,8 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("inputbar {\n");
     output.push_str(&format!("    background-color: {};\n", hex(colors.surface)));
     output.push_str(&format!("    text-color: {};\n", hex(colors.text)));
-    output.push_str(&format!("    border-radius: {}px;\n", theme.metrics.radius));
-    output.push_str(&format!("    padding: {}px;\n", theme.metrics.spacing));
+    output.push_str(&format!("    border-radius: {}px;\n", metrics.radius));
+    output.push_str(&format!("    padding: {}px;\n", metrics.spacing));
     output.push_str("}\n\n");
 
     output.push_str("prompt {\n");
@@ -101,8 +99,8 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("}\n\n");
 
     output.push_str("element {\n");
-    output.push_str(&format!("    padding: {}px;\n", theme.metrics.spacing));
-    output.push_str(&format!("    border-radius: {}px;\n", theme.metrics.radius));
+    output.push_str(&format!("    padding: {}px;\n", metrics.spacing));
+    output.push_str(&format!("    border-radius: {}px;\n", metrics.radius));
     output.push_str(&format!("    background-color: {};\n", hex(colors.surface)));
     output.push_str(&format!("    text-color: {};\n", hex(colors.text_muted)));
     output.push_str("}\n\n");

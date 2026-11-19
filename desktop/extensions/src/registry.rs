@@ -620,6 +620,7 @@ fn sample_theme() -> LoadedTheme {
         },
         typography: ThemeTypography::default(),
         metrics: ThemeMetrics::default(),
+        overrides: Default::default(),
         path: PathBuf::from("sample"),
     }
 }

@@ -45,7 +45,8 @@ fn hex(color: Color) -> String {
 /// Generates a Wofi stylesheet from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
-    let metrics = theme.metrics;
+    let typography = theme.typography_for("wofi");
+    let metrics = theme.metrics_for("wofi");
 
     let mut output = String::new();
 
@@ -58,8 +59,8 @@ pub fn render(theme: &LoadedTheme) -> String {
         metrics.radius + 4,
         hex(colors.background),
         hex(colors.text),
-        theme.typography.font_family,
-        theme.typography.font_size
+        typography.font_family,
+        typography.font_size
     ));
 
     output.push_str(&format!(

@@ -21,11 +21,19 @@ use desktop_core::transaction::{
     rollback_theme,
 };
 use desktop_core::{
-    LoadedTheme, Registry, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeSource, ThemeTypography,
-    read_active_profile, read_active_theme, read_previous_profile, render_theme_parts,
-    render_theme_toml, validate_id,
+    LoadedTheme, Registry, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource,
+    ThemeTypography, read_active_profile, read_active_theme, read_previous_profile,
+    render_theme_full, render_theme_toml, validate_id,
 };
 use desktop_repository as repository;
+
+/// Design tokens saved by [`GuiState::save_theme`].
+#[derive(Clone, Copy)]
+pub struct ThemeDesign<'a> {
+    pub typography: &'a ThemeTypography,
+    pub metrics: ThemeMetrics,
+    pub overrides: &'a std::collections::BTreeMap<String, ThemeOverride>,
+}
 
 /// Directory of the built-in themes, in an installation or a source tree.
 pub fn builtin_themes_dir() -> PathBuf {
@@ -525,8 +533,7 @@ impl GuiState {
         name: &str,
         base: &ThemeCard,
         colors: &ThemeColors,
-        typography: &ThemeTypography,
-        metrics: ThemeMetrics,
+        design: ThemeDesign<'_>,
     ) -> Result<String, String> {
         validate_id(id).map_err(|error| error.to_string())?;
 
@@ -558,7 +565,14 @@ impl GuiState {
         }
 
         install_content(
-            render_theme_parts(&metadata, colors, typography, metrics).as_bytes(),
+            render_theme_full(
+                &metadata,
+                colors,
+                design.typography,
+                design.metrics,
+                design.overrides,
+            )
+            .as_bytes(),
             &file,
         )
         .map_err(|error| error.to_string())?;
@@ -976,14 +990,19 @@ mod tests {
             blue: 0x33,
         };
 
+        let no_overrides = std::collections::BTreeMap::new();
+
         state
             .save_theme(
                 "my-custom",
                 "My Custom",
                 &base,
                 &colors,
-                &base.typography,
-                base.metrics,
+                ThemeDesign {
+                    typography: &base.typography,
+                    metrics: base.metrics,
+                    overrides: &no_overrides,
+                },
             )
             .unwrap();
 
@@ -1004,8 +1023,11 @@ mod tests {
                 "Hijack",
                 &base,
                 &colors,
-                &base.typography,
-                base.metrics,
+                ThemeDesign {
+                    typography: &base.typography,
+                    metrics: base.metrics,
+                    overrides: &no_overrides,
+                },
             )
             .unwrap_err();
 
@@ -1105,13 +1127,35 @@ mod tests {
             opacity: 96,
         };
 
+        let mut overrides = std::collections::BTreeMap::new();
+
+        overrides.insert(
+            "kitty".to_string(),
+            ThemeOverride {
+                font_size: Some(14),
+                ..Default::default()
+            },
+        );
+
         state
-            .save_theme("tokens", "Tokens", &base, &colors, &typography, metrics)
+            .save_theme(
+                "tokens",
+                "Tokens",
+                &base,
+                &colors,
+                ThemeDesign {
+                    typography: &typography,
+                    metrics,
+                    overrides: &overrides,
+                },
+            )
             .unwrap();
 
         let loaded = state.registry().load("tokens").unwrap();
 
         assert_eq!(loaded.typography.mono_family, "Iosevka");
+        assert_eq!(loaded.overrides, overrides);
+        assert_eq!(loaded.typography_for("kitty").font_size, 14);
         assert_eq!(loaded.typography.font_size, 13);
         assert_eq!(loaded.metrics.radius, 5);
         assert_eq!(loaded.metrics.border_width, 1);

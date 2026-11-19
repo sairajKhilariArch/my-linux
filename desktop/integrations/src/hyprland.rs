@@ -51,6 +51,7 @@ fn rgba(color: theme_engine::Color, alpha: &str) -> String {
 /// Generates a Hyprland snippet from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let metrics = theme.metrics_for("hyprland");
 
     let mut output = String::new();
 
@@ -68,17 +69,14 @@ pub fn render(theme: &LoadedTheme) -> String {
         "    col.inactive_border = {}\n",
         rgba(colors.border, "ff")
     ));
-    output.push_str(&format!(
-        "    border_size = {}\n",
-        theme.metrics.border_width
-    ));
+    output.push_str(&format!("    border_size = {}\n", metrics.border_width));
     output.push_str("}\n\n");
 
     output.push_str("decoration {\n");
-    output.push_str(&format!("    rounding = {}\n", theme.metrics.radius));
+    output.push_str(&format!("    rounding = {}\n", metrics.radius));
     output.push_str(&format!(
         "    active_opacity = {:.2}\n",
-        f32::from(theme.metrics.opacity) / 100.0
+        f32::from(metrics.opacity) / 100.0
     ));
     output.push_str("    inactive_opacity = 0.94\n");
     output.push_str("    dim_inactive = false\n\n");

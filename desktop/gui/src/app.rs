@@ -3,15 +3,16 @@
 //! Every screen is a thin view over [`GuiState`], which calls the same
 //! `desktop-core` functions as the CLI. There is no second theme engine here.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use desktop_core::ThemeColors;
 use desktop_core::assets::AssetSettings;
 use desktop_core::format_timestamp;
 use desktop_core::transaction::FileState;
+use desktop_core::{ThemeColors, ThemeOverride};
 use eframe::egui::{self, Color32, RichText, Ui};
 
-use crate::state::{GuiState, ThemeCard, display_name, format_bytes};
+use crate::state::{GuiState, ThemeCard, ThemeDesign, display_name, format_bytes};
 
 const ACCENT: Color32 = Color32::from_rgb(0, 230, 255);
 const GOOD: Color32 = Color32::from_rgb(0x6e, 0xbe, 0x5a);
@@ -49,6 +50,10 @@ struct DraftTheme {
     font_size: u16,
     radius: u8,
     spacing: u8,
+    border_width: u8,
+    opacity: u8,
+    overrides: BTreeMap<String, ThemeOverride>,
+    override_target: String,
 }
 
 impl DraftTheme {
@@ -71,6 +76,10 @@ impl DraftTheme {
             font_size: base.typography.font_size,
             radius: base.metrics.radius,
             spacing: base.metrics.spacing,
+            border_width: base.metrics.border_width,
+            opacity: base.metrics.opacity,
+            overrides: BTreeMap::new(),
+            override_target: "waybar".to_string(),
         }
     }
 
@@ -86,7 +95,8 @@ impl DraftTheme {
         desktop_core::ThemeMetrics {
             radius: self.radius,
             spacing: self.spacing,
-            ..self.base.metrics
+            border_width: self.border_width,
+            opacity: self.opacity,
         }
     }
 
@@ -298,7 +308,13 @@ impl MyLinuxApp {
             .find(|theme| theme.id == theme_id)
             .cloned()
         {
-            self.draft = Some(DraftTheme::new(&card));
+            let mut draft = DraftTheme::new(&card);
+
+            if let Ok(theme) = self.state.registry().load(&card.id) {
+                draft.overrides = theme.overrides;
+            }
+
+            self.draft = Some(draft);
             self.tab = Tab::Editor;
         }
     }
@@ -717,6 +733,13 @@ impl MyLinuxApp {
             self.start_editor(&id);
         }
 
+        let integration_ids: Vec<String> = self
+            .state
+            .integrations
+            .iter()
+            .map(|row| row.id.to_string())
+            .collect();
+
         let Some(draft) = self.draft.as_mut() else {
             ui.add_space(8.0);
             ui.label(
@@ -791,7 +814,83 @@ impl MyLinuxApp {
                 ui.label("Spacing");
                 ui.add(egui::DragValue::new(&mut draft.spacing).range(0..=48));
                 ui.end_row();
+
+                ui.label("Border width");
+                ui.add(egui::DragValue::new(&mut draft.border_width).range(0..=8));
+                ui.end_row();
+
+                ui.label("Opacity");
+                ui.add(
+                    egui::DragValue::new(&mut draft.opacity)
+                        .range(20..=100)
+                        .suffix("%"),
+                );
+                ui.end_row();
             });
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Application overrides").strong());
+        ui.label(
+            RichText::new(
+                "An override replaces the shared font or geometry tokens for one integration \
+                 only. Integrations without an override keep the values above.",
+            )
+            .small()
+            .weak(),
+        );
+
+        let target = draft.override_target.clone();
+
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("editor-override-target")
+                .selected_text(&target)
+                .show_ui(ui, |ui| {
+                    for id in &integration_ids {
+                        ui.selectable_value(&mut draft.override_target, id.clone(), id);
+                    }
+                });
+
+            if ui.button("Clear overrides").clicked() {
+                draft.overrides.clear();
+            }
+        });
+
+        let mut over = draft.overrides.get(&target).cloned().unwrap_or_default();
+        let mut font_override = over.font_size;
+        let mut radius_override = over.radius;
+
+        ui.horizontal(|ui| {
+            let mut use_font = font_override.is_some();
+
+            if ui.checkbox(&mut use_font, "Font size").changed() {
+                font_override = use_font.then_some(over.font_size.unwrap_or(draft.font_size));
+            }
+
+            if let Some(size) = font_override.as_mut() {
+                ui.add(egui::DragValue::new(size).range(6..=48));
+            }
+
+            let mut use_radius = radius_override.is_some();
+
+            if ui.checkbox(&mut use_radius, "Corner radius").changed() {
+                radius_override = use_radius.then_some(over.radius.unwrap_or(draft.radius));
+            }
+
+            if let Some(radius) = radius_override.as_mut() {
+                ui.add(egui::DragValue::new(radius).range(0..=32));
+            }
+        });
+
+        if font_override != over.font_size || radius_override != over.radius {
+            over.font_size = font_override;
+            over.radius = radius_override;
+
+            if over == ThemeOverride::default() {
+                draft.overrides.remove(&target);
+            } else {
+                draft.overrides.insert(target, over);
+            }
+        }
 
         ui.add_space(8.0);
         ui.label(RichText::new("Preview").strong());
@@ -818,12 +917,13 @@ impl MyLinuxApp {
             let base = draft.base.clone();
             let colors = draft.colors();
             let typography = draft.typography();
-            let metrics = draft.metrics();
+            let design = ThemeDesign {
+                typography: &typography,
+                metrics: draft.metrics(),
+                overrides: &draft.overrides,
+            };
 
-            match self
-                .state
-                .save_theme(&id, &name, &base, &colors, &typography, metrics)
-            {
+            match self.state.save_theme(&id, &name, &base, &colors, design) {
                 Ok(message) => {
                     self.status = Some((true, message));
 

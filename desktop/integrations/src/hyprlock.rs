@@ -49,6 +49,7 @@ fn rgba(color: theme_engine::Color, alpha: &str) -> String {
 /// Generates a Hyprlock configuration from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let typography = theme.typography_for("hyprlock");
 
     let mut output = String::new();
 
@@ -63,10 +64,7 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("    text = $TIME\n");
     output.push_str(&format!("    color = {}\n", rgba(colors.text, "ff")));
     output.push_str("    font_size = 72\n");
-    output.push_str(&format!(
-        "    font_family = {}\n",
-        theme.typography.font_family
-    ));
+    output.push_str(&format!("    font_family = {}\n", typography.font_family));
     output.push_str("    position = 0, 160\n");
     output.push_str("    halign = center\n");
     output.push_str("    valign = center\n");

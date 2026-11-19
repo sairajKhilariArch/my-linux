@@ -268,7 +268,11 @@ fn creates_a_user_theme_and_applies_it() {
     );
 
     assert!(created.status.success(), "{}", stderr(&created));
-    assert!(user_themes.join("my-theme/colors/palette.toml").is_file());
+
+    let palette = fs::read_to_string(user_themes.join("my-theme/colors/palette.toml")).unwrap();
+
+    assert!(palette.contains("[overrides.waybar]"));
+    assert!(palette.contains("font_size = 10"));
 
     let listed = run_with_user_themes(root.path(), &["list"], &user_themes);
     let out = stdout(&listed);
@@ -281,6 +285,42 @@ fn creates_a_user_theme_and_applies_it() {
 
     assert!(root.read("waybar.css").contains("#FF235A"));
     assert_eq!(root.read("state/active-theme").trim(), "my-theme");
+}
+
+#[test]
+fn duplicates_a_theme_with_its_design_tokens() {
+    let root = TempRoot::new("duplicate");
+    let user_themes = root.join("user-themes");
+
+    let duplicated = run_with_user_themes(
+        root.path(),
+        &["duplicate", "cyberpunk", "cyberpunk-copy"],
+        &user_themes,
+    );
+
+    assert!(duplicated.status.success(), "{}", stderr(&duplicated));
+
+    let palette = fs::read_to_string(user_themes.join("cyberpunk-copy/colors/palette.toml"))
+        .expect("the duplicate should be written");
+
+    assert!(palette.contains("id = \"cyberpunk-copy\""));
+    assert!(palette.contains("primary = \"#FF235A\""));
+    assert!(palette.contains("[overrides.waybar]"));
+
+    let info = run_with_user_themes(root.path(), &["info", "cyberpunk-copy"], &user_themes);
+    let out = stdout(&info);
+
+    assert!(out.contains("overrides:"));
+    assert!(out.contains("waybar: font_size=10 radius=4"));
+
+    let again = run_with_user_themes(
+        root.path(),
+        &["duplicate", "cyberpunk", "cyberpunk-copy"],
+        &user_themes,
+    );
+
+    assert!(!again.status.success());
+    assert!(stderr(&again).contains("already exists"));
 }
 
 #[test]

@@ -41,6 +41,8 @@ impl Integration for Waybar {
 /// Generates Waybar CSS from the active theme.
 pub fn render(theme: &LoadedTheme) -> String {
     let colors = &theme.colors;
+    let typography = theme.typography_for("waybar");
+    let metrics = theme.metrics_for("waybar");
     let hex = |color: theme_engine::Color| color.to_hex();
 
     let mut output = String::new();
@@ -92,7 +94,7 @@ pub fn render(theme: &LoadedTheme) -> String {
 
     output.push_str(&format!(
         "* {{\n    font-family: \"{}\", monospace;\n    font-size: {}px;\n    border: none;\n    border-radius: {}px;\n    min-height: 0;\n}}\n\n",
-        theme.typography.mono_family, theme.typography.font_size, theme.metrics.radius
+        typography.mono_family, typography.font_size, metrics.radius
     ));
 
     output.push_str(
@@ -199,6 +201,14 @@ mod tests {
         assert!(css.contains("#workspaces button.active"));
         assert!(css.contains("#battery.critical"));
         assert!(css.contains("tooltip"));
+    }
+
+    #[test]
+    fn applies_waybar_specific_token_overrides() {
+        let css = render(&theme());
+
+        assert!(css.contains("font-size: 10px"));
+        assert!(css.contains("border-radius: 4px"));
     }
 
     #[test]

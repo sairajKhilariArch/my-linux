@@ -1,8 +1,8 @@
 use desktop_core::{
-    Color, Registry, ThemeMetadata,
+    Color, Registry, ThemeMetadata, ThemeMetrics, ThemeTypography,
     config_manager::install_content,
     extensions::{ExtensionFormat, ExtensionRegistry, user_extensions_dir},
-    generate_palette, integrations, read_active_theme, render_from_parts, render_theme_toml,
+    generate_palette, integrations, read_active_theme, render_theme_full, render_theme_toml,
     transaction::{
         FileState, WAYBAR_RELATIVE_PATH, apply_theme_with_extra, destination, detect_modifications,
         diagnose, format_timestamp, installed_entries, original_backup, read_history,
@@ -43,6 +43,7 @@ Theme commands:
   render <theme> [--integration <id>]
                            Print a generated application configuration
   create <id> [--from <theme> | --base <#RRGGBB>]
+  duplicate <from> <to>    Copy a theme, including tokens and overrides
                            Create a user theme
   import <path> [--as <id>]
                            Import a theme directory or .toml file
@@ -347,10 +348,29 @@ fn command_create(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Theme `{id}` already exists").into());
     }
 
-    let colors = match (from, base) {
-        (Some(parent), _) => registry.load(&parent)?.colors,
-        (None, Some(base)) => generate_palette(base),
-        (None, None) => generate_palette(Color::new(0x6C, 0x8C, 0xFF)),
+    let (colors, typography, metrics, overrides) = match (from, base) {
+        (Some(parent), _) => {
+            let parent = registry.load(&parent)?;
+
+            (
+                parent.colors,
+                parent.typography,
+                parent.metrics,
+                parent.overrides,
+            )
+        }
+        (None, Some(base)) => (
+            generate_palette(base),
+            ThemeTypography::default(),
+            ThemeMetrics::default(),
+            std::collections::BTreeMap::new(),
+        ),
+        (None, None) => (
+            generate_palette(Color::new(0x6C, 0x8C, 0xFF)),
+            ThemeTypography::default(),
+            ThemeMetrics::default(),
+            std::collections::BTreeMap::new(),
+        ),
     };
 
     let metadata = ThemeMetadata {
@@ -365,12 +385,50 @@ fn command_create(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     let path = theme_path(&id);
 
-    install_content(render_from_parts(&metadata, &colors).as_bytes(), &path)?;
+    install_content(
+        render_theme_full(&metadata, &colors, &typography, metrics, &overrides).as_bytes(),
+        &path,
+    )?;
 
     println!("Theme created.");
     println!("Id:   {id}");
     println!("File: {}", path.display());
     println!("Next: my-linux-theme preview {id}");
+
+    Ok(())
+}
+
+fn command_duplicate(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let from = rest
+        .first()
+        .ok_or("Usage: my-linux-theme duplicate <from> <to>")?;
+    let to = rest
+        .get(1)
+        .ok_or("Usage: my-linux-theme duplicate <from> <to>")?
+        .to_lowercase();
+
+    validate_id(&to)?;
+
+    let registry = registry();
+    let mut theme = registry.load(from)?;
+
+    if registry.find(&to).is_some() {
+        return Err(format!("Theme `{to}` already exists").into());
+    }
+
+    theme.metadata.id = to.clone();
+    theme.metadata.name = format!("{} Copy", theme.metadata.name);
+    theme.metadata.version = "0.1.0".to_string();
+    theme.metadata.extends = None;
+
+    let path = theme_path(&to);
+
+    install_content(render_theme_toml(&theme).as_bytes(), &path)?;
+
+    println!("Theme duplicated.");
+    println!("From: {from}");
+    println!("Id:   {to}");
+    println!("File: {}", path.display());
 
     Ok(())
 }
@@ -2581,6 +2639,45 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             println!("  path:        {}", theme.path.display());
+
+            if !theme.overrides.is_empty() {
+                println!("  overrides:");
+
+                for (integration, over) in &theme.overrides {
+                    let mut values = Vec::new();
+
+                    if let Some(family) = &over.font_family {
+                        values.push(format!("font_family={family}"));
+                    }
+
+                    if let Some(family) = &over.mono_family {
+                        values.push(format!("mono_family={family}"));
+                    }
+
+                    if let Some(size) = over.font_size {
+                        values.push(format!("font_size={size}"));
+                    }
+
+                    if let Some(radius) = over.radius {
+                        values.push(format!("radius={radius}"));
+                    }
+
+                    if let Some(spacing) = over.spacing {
+                        values.push(format!("spacing={spacing}"));
+                    }
+
+                    if let Some(border) = over.border_width {
+                        values.push(format!("border_width={border}"));
+                    }
+
+                    if let Some(opacity) = over.opacity {
+                        values.push(format!("opacity={opacity}"));
+                    }
+
+                    println!("    {integration}: {}", values.join(" "));
+                }
+            }
+
             println!();
             println!("Palette:");
 
@@ -2682,6 +2779,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "create" => command_create(rest)?,
+
+        "duplicate" => command_duplicate(rest)?,
 
         "import" => command_import(rest)?,
 

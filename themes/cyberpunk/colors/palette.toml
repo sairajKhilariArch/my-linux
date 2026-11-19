@@ -36,3 +36,9 @@ radius = 8
 spacing = 8
 border_width = 2
 opacity = 100
+
+# Waybar is dense, so it uses a smaller font and tighter corners than the rest
+# of the desktop. Other integrations keep the shared tokens above.
+[overrides.waybar]
+font_size = 10
+radius = 4
