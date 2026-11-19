@@ -8,3 +8,7 @@ members = [
     "desktop/config-manager",
     "desktop/cli",
 ]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
