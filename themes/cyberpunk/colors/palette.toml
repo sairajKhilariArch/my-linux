@@ -36,6 +36,8 @@ radius = 8
 spacing = 8
 border_width = 2
 opacity = 100
+shadow_range = 16
+shadow_opacity = 55
 
 # Waybar is dense, so it uses a smaller font and tighter corners than the rest
 # of the desktop. Other integrations keep the shared tokens above.

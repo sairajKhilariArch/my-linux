@@ -63,6 +63,8 @@ pub fn render_theme_full(
     output.push_str(&format!("spacing = {}\n", metrics.spacing));
     output.push_str(&format!("border_width = {}\n", metrics.border_width));
     output.push_str(&format!("opacity = {}\n", metrics.opacity));
+    output.push_str(&format!("shadow_range = {}\n", metrics.shadow_range));
+    output.push_str(&format!("shadow_opacity = {}\n", metrics.shadow_opacity));
 
     for (integration, over) in overrides {
         output.push_str(&format!("\n[overrides.{integration}]\n"));
@@ -93,6 +95,14 @@ pub fn render_theme_full(
 
         if let Some(opacity) = over.opacity {
             output.push_str(&format!("opacity = {opacity}\n"));
+        }
+
+        if let Some(range) = over.shadow_range {
+            output.push_str(&format!("shadow_range = {range}\n"));
+        }
+
+        if let Some(opacity) = over.shadow_opacity {
+            output.push_str(&format!("shadow_opacity = {opacity}\n"));
         }
     }
 

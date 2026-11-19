@@ -77,6 +77,10 @@ struct RawMetrics {
     border_width: Option<u8>,
     #[serde(default)]
     opacity: Option<u8>,
+    #[serde(default)]
+    shadow_range: Option<u8>,
+    #[serde(default)]
+    shadow_opacity: Option<u8>,
 }
 
 /// Per-application overrides of the design tokens.
@@ -96,6 +100,10 @@ struct RawOverride {
     border_width: Option<u8>,
     #[serde(default)]
     opacity: Option<u8>,
+    #[serde(default)]
+    shadow_range: Option<u8>,
+    #[serde(default)]
+    shadow_opacity: Option<u8>,
 }
 
 /// Design tokens overridden for one application integration.
@@ -108,6 +116,8 @@ pub struct ThemeOverride {
     pub spacing: Option<u8>,
     pub border_width: Option<u8>,
     pub opacity: Option<u8>,
+    pub shadow_range: Option<u8>,
+    pub shadow_opacity: Option<u8>,
 }
 
 impl ThemeOverride {
@@ -139,6 +149,14 @@ impl ThemeOverride {
         if let Some(opacity) = raw.opacity {
             self.opacity = Some(opacity);
         }
+
+        if let Some(range) = raw.shadow_range {
+            self.shadow_range = Some(range);
+        }
+
+        if let Some(opacity) = raw.shadow_opacity {
+            self.shadow_opacity = Some(opacity);
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -149,6 +167,8 @@ impl ThemeOverride {
             && self.spacing.is_none()
             && self.border_width.is_none()
             && self.opacity.is_none()
+            && self.shadow_range.is_none()
+            && self.shadow_opacity.is_none()
     }
 }
 
@@ -178,6 +198,10 @@ pub struct ThemeMetrics {
     pub border_width: u8,
     /// Window opacity in percent (`100` is fully opaque).
     pub opacity: u8,
+    /// Shadow blur range in pixels (`0` disables the shadow).
+    pub shadow_range: u8,
+    /// Shadow colour opacity in percent (`0` disables the shadow).
+    pub shadow_opacity: u8,
 }
 
 impl Default for ThemeMetrics {
@@ -187,6 +211,8 @@ impl Default for ThemeMetrics {
             spacing: 8,
             border_width: 2,
             opacity: 100,
+            shadow_range: 12,
+            shadow_opacity: 40,
         }
     }
 }
@@ -264,6 +290,8 @@ impl LoadedTheme {
             spacing: over.spacing.unwrap_or(self.metrics.spacing),
             border_width: over.border_width.unwrap_or(self.metrics.border_width),
             opacity: over.opacity.unwrap_or(self.metrics.opacity),
+            shadow_range: over.shadow_range.unwrap_or(self.metrics.shadow_range),
+            shadow_opacity: over.shadow_opacity.unwrap_or(self.metrics.shadow_opacity),
         }
     }
 }
@@ -607,6 +635,14 @@ impl Registry {
             if let Some(opacity) = raw.opacity {
                 metrics.opacity = opacity;
             }
+
+            if let Some(range) = raw.shadow_range {
+                metrics.shadow_range = range;
+            }
+
+            if let Some(opacity) = raw.shadow_opacity {
+                metrics.shadow_opacity = opacity;
+            }
         }
 
         if let Some(raw) = &raw.overrides {
@@ -788,6 +824,18 @@ fn validate_override(integration: &str, over: &ThemeOverride) -> Result<(), Them
         return Err(invalid("opacity", opacity.to_string()));
     }
 
+    if let Some(range) = over.shadow_range
+        && range > 40
+    {
+        return Err(invalid("shadow_range", range.to_string()));
+    }
+
+    if let Some(opacity) = over.shadow_opacity
+        && opacity > 100
+    {
+        return Err(invalid("shadow_opacity", opacity.to_string()));
+    }
+
     if over
         .font_family
         .as_deref()
@@ -838,12 +886,19 @@ fn validate_metrics(metrics: &ThemeMetrics) -> Result<(), ThemeLoadError> {
     let valid = metrics.radius <= 32
         && metrics.spacing <= 48
         && metrics.border_width <= 8
-        && (20..=100).contains(&metrics.opacity);
+        && (20..=100).contains(&metrics.opacity)
+        && metrics.shadow_range <= 40
+        && metrics.shadow_opacity <= 100;
 
     if !valid {
         return Err(ThemeLoadError::InvalidMetadata(format!(
-            "metrics out of range: radius {} (0..=32), spacing {} (0..=48), border_width {} (0..=8), opacity {} (20..=100)",
-            metrics.radius, metrics.spacing, metrics.border_width, metrics.opacity
+            "metrics out of range: radius {} (0..=32), spacing {} (0..=48), border_width {} (0..=8), opacity {} (20..=100), shadow_range {} (0..=40), shadow_opacity {} (0..=100)",
+            metrics.radius,
+            metrics.spacing,
+            metrics.border_width,
+            metrics.opacity,
+            metrics.shadow_range,
+            metrics.shadow_opacity
         )));
     }
 
@@ -1017,6 +1072,71 @@ active = "#FF0000"
 hover = "#00FF00"
 selected = "#222222"
 "##;
+
+    #[test]
+    fn loads_shadow_metrics_and_per_application_shadows() {
+        let root = scratch("shadows");
+        let contents = format!(
+            "{BASE_THEME}\n[metrics]\nshadow_range = 20\nshadow_opacity = 70\n\n\
+             [overrides.hyprland]\nshadow_range = 5\nshadow_opacity = 20\n"
+        );
+
+        write_theme(&root, "base", &contents);
+
+        let theme = Registry::new(vec![root.clone()]).load("base").unwrap();
+
+        assert_eq!(theme.metrics.shadow_range, 20);
+        assert_eq!(theme.metrics.shadow_opacity, 70);
+        assert_eq!(theme.metrics_for("hyprland").shadow_range, 5);
+        assert_eq!(theme.metrics_for("hyprland").shadow_opacity, 20);
+        assert_eq!(theme.metrics_for("rofi").shadow_range, 20);
+
+        let exported = crate::template::render_theme_toml(&theme);
+
+        assert!(exported.contains("shadow_range = 20"));
+        assert!(exported.contains("[overrides.hyprland]"));
+        assert!(exported.contains("shadow_opacity = 20"));
+
+        write_theme(&root, "base", &exported);
+
+        let reloaded = Registry::new(vec![root]).load("base").unwrap();
+
+        assert_eq!(reloaded.metrics, theme.metrics);
+        assert_eq!(reloaded.overrides, theme.overrides);
+    }
+
+    #[test]
+    fn rejects_out_of_range_shadow_tokens() {
+        let root = scratch("bad-shadows");
+
+        write_theme(
+            &root,
+            "base",
+            &format!("{BASE_THEME}\n[metrics]\nshadow_range = 99\n"),
+        );
+
+        let error = Registry::new(vec![root.clone()])
+            .load("base")
+            .expect_err("range 99 must be rejected");
+
+        assert!(error.to_string().contains("shadow_range 99"));
+
+        write_theme(
+            &root,
+            "base",
+            &format!("{BASE_THEME}\n[overrides.waybar]\nshadow_opacity = 101\n"),
+        );
+
+        let error = Registry::new(vec![root])
+            .load("base")
+            .expect_err("opacity 101 must be rejected");
+
+        assert!(
+            error
+                .to_string()
+                .contains("overrides.waybar.shadow_opacity")
+        );
+    }
 
     #[test]
     fn loads_and_round_trips_application_overrides() {

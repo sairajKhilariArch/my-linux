@@ -81,13 +81,25 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("    inactive_opacity = 0.94\n");
     output.push_str("    dim_inactive = false\n\n");
 
+    let shadow_alpha = format!(
+        "{:02x}",
+        (u16::from(metrics.shadow_opacity) * 255 / 100) as u8
+    );
+
     output.push_str("    shadow {\n");
-    output.push_str("        enabled = true\n");
-    output.push_str("        range = 12\n");
+    output.push_str(&format!(
+        "        enabled = {}\n",
+        metrics.shadow_range > 0 && metrics.shadow_opacity > 0
+    ));
+    output.push_str(&format!("        range = {}\n", metrics.shadow_range));
     output.push_str("        render_power = 3\n");
     output.push_str(&format!(
         "        color = {}\n",
-        rgba(colors.background, "ee")
+        rgba(colors.background, &shadow_alpha)
+    ));
+    output.push_str(&format!(
+        "        color_inactive = {}\n",
+        rgba(colors.background, &shadow_alpha)
     ));
     output.push_str("    }\n\n");
 
@@ -130,6 +142,20 @@ mod tests {
         assert!(conf.contains("border_size = 2"));
         assert!(conf.contains("blur {"));
         assert!(conf.contains("source = ~/.config/hypr/my-linux.conf"));
+    }
+
+    #[test]
+    fn renders_theme_shadow_tokens() {
+        let conf = render(&theme());
+
+        assert!(conf.contains("range = 16"));
+        assert!(conf.contains("color = rgba(0C08128c)"));
+        assert!(conf.contains("enabled = true"));
+
+        let mut theme = theme();
+        theme.metrics.shadow_range = 0;
+
+        assert!(render(&theme).contains("enabled = false"));
     }
 
     #[test]

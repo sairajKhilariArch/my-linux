@@ -52,6 +52,8 @@ struct DraftTheme {
     spacing: u8,
     border_width: u8,
     opacity: u8,
+    shadow_range: u8,
+    shadow_opacity: u8,
     overrides: BTreeMap<String, ThemeOverride>,
     override_target: String,
 }
@@ -78,6 +80,8 @@ impl DraftTheme {
             spacing: base.metrics.spacing,
             border_width: base.metrics.border_width,
             opacity: base.metrics.opacity,
+            shadow_range: base.metrics.shadow_range,
+            shadow_opacity: base.metrics.shadow_opacity,
             overrides: BTreeMap::new(),
             override_target: "waybar".to_string(),
         }
@@ -97,6 +101,8 @@ impl DraftTheme {
             spacing: self.spacing,
             border_width: self.border_width,
             opacity: self.opacity,
+            shadow_range: self.shadow_range,
+            shadow_opacity: self.shadow_opacity,
         }
     }
 
@@ -823,6 +829,22 @@ impl MyLinuxApp {
                 ui.add(
                     egui::DragValue::new(&mut draft.opacity)
                         .range(20..=100)
+                        .suffix("%"),
+                );
+                ui.end_row();
+
+                ui.label("Shadow range");
+                ui.add(
+                    egui::DragValue::new(&mut draft.shadow_range)
+                        .range(0..=40)
+                        .suffix(" px"),
+                );
+                ui.end_row();
+
+                ui.label("Shadow opacity");
+                ui.add(
+                    egui::DragValue::new(&mut draft.shadow_opacity)
+                        .range(0..=100)
                         .suffix("%"),
                 );
                 ui.end_row();

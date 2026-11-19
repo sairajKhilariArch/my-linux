@@ -1125,6 +1125,8 @@ mod tests {
             spacing: 9,
             border_width: 1,
             opacity: 96,
+            shadow_range: 18,
+            shadow_opacity: 60,
         };
 
         let mut overrides = std::collections::BTreeMap::new();
@@ -1154,6 +1156,8 @@ mod tests {
         let loaded = state.registry().load("tokens").unwrap();
 
         assert_eq!(loaded.typography.mono_family, "Iosevka");
+        assert_eq!(loaded.metrics.shadow_range, 18);
+        assert_eq!(loaded.metrics.shadow_opacity, 60);
         assert_eq!(loaded.overrides, overrides);
         assert_eq!(loaded.typography_for("kitty").font_size, 14);
         assert_eq!(loaded.typography.font_size, 13);

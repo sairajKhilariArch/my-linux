@@ -2674,6 +2674,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         values.push(format!("opacity={opacity}"));
                     }
 
+                    if let Some(range) = over.shadow_range {
+                        values.push(format!("shadow_range={range}"));
+                    }
+
+                    if let Some(opacity) = over.shadow_opacity {
+                        values.push(format!("shadow_opacity={opacity}"));
+                    }
+
                     println!("    {integration}: {}", values.join(" "));
                 }
             }
@@ -2716,6 +2724,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("  spacing      {} px", metrics.spacing);
             println!("  border       {} px", metrics.border_width);
             println!("  opacity      {} %", metrics.opacity);
+            println!("  shadow range {} px", metrics.shadow_range);
+            println!("  shadow       {} %", metrics.shadow_opacity);
         }
 
         "render" => {

@@ -1,6 +1,6 @@
 # Maintainer: My Linux <maintainers@example.com>
 pkgname=my-linux
-pkgver=0.22.0
+pkgver=0.23.0
 pkgrel=1
 pkgdesc="Independent desktop customisation platform for Hyprland and friends"
 arch=('x86_64' 'aarch64')

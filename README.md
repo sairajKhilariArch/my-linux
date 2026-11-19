@@ -376,6 +376,8 @@ radius = 8
 spacing = 8
 border_width = 2
 opacity = 100
+shadow_range = 12       # pixels, 0 disables the shadow
+shadow_opacity = 40     # percent
 
 # Waybar is dense, so only Waybar uses these tokens.
 [overrides.waybar]
@@ -386,7 +388,8 @@ radius = 4
 Every integration asks for `typography_for(id)` and `metrics_for(id)`, so an
 override changes just that application. Overrides inherit through `extends`
 field by field, are range-validated (`font_size` 6–48, `radius` ≤ 32,
-`spacing` ≤ 48, `border_width` ≤ 8, `opacity` 20–100) and survive export and
+`spacing` ≤ 48, `border_width` ≤ 8, `opacity` 20–100, `shadow_range` ≤ 40,
+`shadow_opacity` ≤ 100) and survive export and
 `duplicate`. `info <theme>` lists them, and the GUI theme editor edits them per
 integration alongside border width and opacity.
 

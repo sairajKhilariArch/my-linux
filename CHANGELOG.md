@@ -5,6 +5,34 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-11-19
+
+### Added
+
+- Shadow tokens in the theme schema: `metrics.shadow_range` (0–40 px, default
+  12) and `metrics.shadow_opacity` (0–100 %, default 40). They are validated,
+  exported, inherited and may be overridden per integration like the other
+  design tokens.
+- Hyprland renders the shadow range, computes the colour alpha from the token
+  (so a theme can soften or disable shadows), emits `color_inactive`, and turns
+  the shadow off when either token is zero.
+- GUI theme editor exposes Shadow range and Shadow opacity next to border width
+  and opacity, saving them through the same path.
+- Cyberpunk demonstrates the tokens with `shadow_range = 16` and
+  `shadow_opacity = 55`.
+
+### Tests
+
+- Loader: shadow defaults, per-application shadow overrides, export round-trip
+  and rejection of out-of-range shadow values.
+- Hyprland: renders the configured range and derived alpha, and disables the
+  shadow at range zero.
+- GUI: saved themes keep shadow tokens.
+
+### Changed
+
+- Workspace version 0.23.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.22.0] - 2026-11-19
 
 ### Added
