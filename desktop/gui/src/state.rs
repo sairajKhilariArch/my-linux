@@ -17,8 +17,8 @@ use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile_with_extens
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::transaction::{
     Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with_extra,
-    detect_modifications, diagnose, read_history, recover_interrupted, restore_theme,
-    rollback_theme,
+    detect_modifications, diagnose, read_history, recover_interrupted, refresh_lock_screen_config,
+    restore_theme, rollback_theme,
 };
 use desktop_core::{
     LoadedTheme, Registry, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource,
@@ -487,7 +487,7 @@ impl GuiState {
             .set(&installed.path, "apply")
             .map_err(|error| error.to_string())?;
 
-        let mut note = String::new();
+        let mut note = self.refresh_lock_screen().unwrap_or_default();
 
         if let Some(tool) = detect_tool() {
             match set_wallpaper(tool, &installed.path) {
@@ -499,6 +499,22 @@ impl GuiState {
         self.refresh();
 
         Ok(format!("Wallpaper: {}.{note}", installed.path.display()))
+    }
+
+    /// Re-renders the installed lock screen for the active theme and the newly
+    /// recorded wallpaper. Returns a warning when it could not be refreshed.
+    fn refresh_lock_screen(&mut self) -> Option<String> {
+        let id = read_active_theme(&self.root)?;
+        let theme = match self.registry().load(&id) {
+            Ok(theme) => theme,
+            Err(error) => {
+                return Some(format!(" The lock screen was not refreshed: {error}"));
+            }
+        };
+
+        refresh_lock_screen_config(&self.root, &theme)
+            .err()
+            .map(|error| format!(" The lock screen was not refreshed: {error}"))
     }
 
     /// Extracts a palette proposal from a wallpaper without saving anything.
@@ -577,9 +593,12 @@ impl GuiState {
         )
         .map_err(|error| error.to_string())?;
 
-        self.registry()
-            .load(id)
-            .map_err(|error| format!("The saved theme does not load: {error}"))?;
+        if let Err(error) = self.registry().load(id) {
+            // Never leave a theme behind that the registry reports as broken.
+            let _ = fs::remove_file(&file);
+
+            return Err(format!("The saved theme does not load: {error}"));
+        }
 
         self.refresh();
 
@@ -1035,6 +1054,49 @@ mod tests {
 
         state.remove_theme("my-custom").unwrap();
         assert!(!state.themes.iter().any(|theme| theme.id == "my-custom"));
+    }
+
+    #[test]
+    fn removes_a_saved_theme_that_does_not_load() {
+        let mut state = state_for("invalid-save");
+        let base = state
+            .themes
+            .iter()
+            .find(|theme| theme.id == "cyberpunk")
+            .unwrap()
+            .clone();
+        let mut overrides = std::collections::BTreeMap::new();
+
+        overrides.insert(
+            "waybar".to_string(),
+            ThemeOverride {
+                shadow_range: Some(99),
+                ..Default::default()
+            },
+        );
+
+        let error = state
+            .save_theme(
+                "bad-save",
+                "Bad Save",
+                &base,
+                &base.colors,
+                ThemeDesign {
+                    typography: &base.typography,
+                    metrics: base.metrics,
+                    overrides: &overrides,
+                },
+            )
+            .unwrap_err();
+
+        assert!(error.contains("does not load"));
+        assert!(
+            !state
+                .user_themes
+                .join("bad-save/colors/palette.toml")
+                .exists()
+        );
+        assert!(state.registry().find("bad-save").is_none());
     }
 
     #[test]

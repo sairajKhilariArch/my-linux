@@ -241,12 +241,23 @@ fn apply_profile_transaction(
     extra.extend(extensions.iter().cloned());
 
     // Record the wallpaper before the transaction so the lock screen generated
-    // inside it already points at the profile's wallpaper.
+    // inside it already points at the profile's wallpaper. If the transaction
+    // fails, the recorded wallpaper state is put back.
+    let wallpapers = WallpaperState::new(root);
+    let previous_state = (wallpapers.current(), wallpapers.previous());
+
     if let Some(path) = &wallpaper {
-        WallpaperState::new(root).set(path, "profile")?;
+        wallpapers.set(path, "profile")?;
     }
 
-    let report = apply_theme_with_extra(root, theme, &selected, &extra)?;
+    let report = match apply_theme_with_extra(root, theme, &selected, &extra) {
+        Ok(report) => report,
+        Err(error) => {
+            wallpapers.restore_state(previous_state.0.as_deref(), previous_state.1.as_deref())?;
+
+            return Err(error.into());
+        }
+    };
 
     let assets = AssetSettings {
         font: profile.assets.font.clone(),
@@ -319,6 +330,45 @@ mod tests {
 
     fn theme(name: &str) -> LoadedTheme {
         crate::load_desktop_theme("../../themes", name).expect("theme should load")
+    }
+
+    #[test]
+    fn failed_profile_application_restores_the_wallpaper_state() {
+        let dir = test_dir("wallpaper-rollback");
+        let first = dir.join("first.png");
+        let second = dir.join("second.png");
+
+        fs::write(&first, b"first").unwrap();
+        fs::write(&second, b"second").unwrap();
+
+        WallpaperState::new(&dir).set(&first, "initial").unwrap();
+
+        let mut profile = Profile::new("rollback", "Rollback", "cyberpunk").unwrap();
+
+        profile.metadata.integrations = vec!["waybar".to_string()];
+        profile.metadata.wallpaper = Some(second.display().to_string());
+        profile.validate().unwrap();
+
+        // An empty generated path makes the transaction fail after the
+        // wallpaper was recorded.
+        let error = apply_profile_with_extensions(
+            &dir,
+            &profile,
+            &theme("cyberpunk"),
+            &ProfileApplyOptions {
+                set_wallpaper: false,
+                reload: false,
+            },
+            &[(" ".to_string(), "x".to_string())],
+        )
+        .unwrap_err();
+
+        assert!(!error.to_string().is_empty());
+
+        let state = WallpaperState::new(&dir);
+
+        assert_eq!(state.current().as_deref(), Some(first.as_path()));
+        assert_eq!(state.previous(), None);
     }
 
     #[test]

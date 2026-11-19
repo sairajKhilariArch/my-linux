@@ -740,6 +740,42 @@ fn wallpaper_commands_discover_preview_and_generate_a_theme() {
 }
 
 #[test]
+fn wallpaper_change_refreshes_the_lock_screen() {
+    let root = TempRoot::new("wallpaper-lock-screen");
+    let library = root.join("pictures");
+
+    fs::create_dir_all(&library).unwrap();
+
+    let file = library.join("wall.png");
+
+    desktop_assets::testing::write_png(&file, 8, 8, &[theme_engine::Color::new(30, 30, 30)])
+        .unwrap();
+
+    let env = [("MY_LINUX_WALLPAPERS", library.to_str().unwrap())];
+
+    let applied = run_env(root.path(), &["apply", "cyberpunk"], &env);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+
+    let lock_screen = root.join("hyprlock/hyprlock.conf");
+    let before = fs::read_to_string(&lock_screen).unwrap();
+
+    assert!(before.contains("color = rgba(0C0812ff)"));
+
+    let wallpaper = run_env(
+        root.path(),
+        &["wallpaper", "apply", "wall", "--no-set"],
+        &env,
+    );
+    assert!(wallpaper.status.success(), "{}", stderr(&wallpaper));
+
+    let after = fs::read_to_string(&lock_screen).unwrap();
+
+    assert!(after.contains("path = "));
+    assert!(after.contains("wall.png"));
+    assert!(!after.contains("color = rgba(0C0812ff)"));
+}
+
+#[test]
 fn wallpaper_and_asset_state_are_recorded() {
     let root = TempRoot::new("wallpaper-state");
     let library = root.join("pictures");

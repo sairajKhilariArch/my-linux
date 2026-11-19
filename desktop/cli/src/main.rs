@@ -6,7 +6,7 @@ use desktop_core::{
     transaction::{
         FileState, WAYBAR_RELATIVE_PATH, apply_theme_with_extra, destination, detect_modifications,
         diagnose, format_timestamp, installed_entries, original_backup, read_history,
-        restore_theme, rollback_theme,
+        refresh_lock_screen_config, restore_theme, rollback_theme,
     },
     validate_id,
 };
@@ -1668,6 +1668,27 @@ fn command_install_status(rest: &[String]) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+/// Re-renders the installed lock screen after a wallpaper change. A missing
+/// theme or lock screen configuration is not an error; the wallpaper change
+/// itself still succeeded.
+fn sync_lock_screen(root: &Path) {
+    let Some(id) = read_active_theme(root) else {
+        return;
+    };
+
+    let theme = match registry().load(&id) {
+        Ok(theme) => theme,
+        Err(error) => {
+            eprintln!("warning: could not refresh the lock screen: {error}");
+            return;
+        }
+    };
+
+    if let Err(error) = refresh_lock_screen_config(root, &theme) {
+        eprintln!("warning: could not refresh the lock screen: {error}");
+    }
+}
+
 fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let subcommand = rest.first().map(String::as_str).unwrap_or("list");
     let args = &rest[1..];
@@ -1736,6 +1757,7 @@ fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::er
                 println!("Library:    {}", directory.display());
             }
 
+            sync_lock_screen(root);
             apply_wallpaper_to_desktop(&installed.path, !has_flag(args, "--no-set"));
         }
 
@@ -1798,6 +1820,7 @@ fn command_wallpaper(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::er
             );
 
             println!("Wallpaper restored: {}", previous.display());
+            sync_lock_screen(root);
             apply_wallpaper_to_desktop(&previous, true);
         }
 

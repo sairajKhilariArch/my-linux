@@ -129,6 +129,71 @@ pub fn destination(root: impl AsRef<Path>, relative_path: &str) -> PathBuf {
     root.as_ref().join(relative_path)
 }
 
+/// Re-renders the installed lock screen configuration for `theme`, using the
+/// wallpaper recorded in the installation root.
+///
+/// Nothing is written when no lock screen configuration is installed, so a
+/// wallpaper change never creates files for an integration the user has not
+/// applied. The generated content is validated before the atomic install.
+pub fn refresh_lock_screen_config(
+    root: impl AsRef<Path>,
+    theme: &LoadedTheme,
+) -> Result<Option<PathBuf>, ApplyError> {
+    let root = root.as_ref();
+    let relative_path = "hyprlock/hyprlock.conf";
+    let file = destination(root, relative_path);
+
+    let Some(entry) = installed_entries(root)
+        .into_iter()
+        .find(|entry| entry.relative_path == relative_path)
+    else {
+        return Ok(None);
+    };
+
+    match fs::read(&file) {
+        Ok(content) if digest(&content) == entry.digest => {}
+        Ok(_) => {
+            return Err(ApplyError::Validation(format!(
+                "{relative_path} was modified by you; it was not refreshed. Apply the theme to replace it."
+            )));
+        }
+        Err(_) => return Ok(None),
+    }
+
+    let wallpaper = desktop_assets::WallpaperState::new(root)
+        .current()
+        .filter(|path| path.is_file());
+    let content =
+        desktop_integrations::hyprlock::render_with_wallpaper(theme, wallpaper.as_deref());
+
+    desktop_integrations::hyprlock::Hyprlock
+        .validate(&content)
+        .map_err(|error| {
+            ApplyError::Validation(format!(
+                "Generated hyprlock configuration is invalid: {error}"
+            ))
+        })?;
+
+    install_content(content.as_bytes(), &file)?;
+    update_installed_digest(root, relative_path, content.as_bytes())?;
+
+    let _ = append_event(
+        root,
+        Level::Info,
+        "lock-screen",
+        &format!(
+            "theme={} wallpaper={}",
+            theme.metadata.id,
+            wallpaper
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ),
+    );
+
+    Ok(Some(file))
+}
+
 /// First original configuration. Created once and never overwritten.
 pub fn original_backup(root: impl AsRef<Path>, relative_path: &str) -> PathBuf {
     root.as_ref()
@@ -400,6 +465,26 @@ fn write_installed(root: &Path, prepared: &[Prepared]) -> Result<(), ConfigError
     }
 
     install_content(content.as_bytes(), installed_file(root))
+}
+
+fn update_installed_digest(
+    root: &Path,
+    relative_path: &str,
+    content: &[u8],
+) -> Result<(), ConfigError> {
+    let mut updated = String::new();
+
+    for entry in installed_entries(root) {
+        let entry_digest = if entry.relative_path == relative_path {
+            digest(content)
+        } else {
+            entry.digest
+        };
+
+        updated.push_str(&format!("{}\t{}\n", entry.relative_path, entry_digest));
+    }
+
+    install_content(updated.as_bytes(), installed_file(root))
 }
 
 /// Files that the current installation is responsible for.
@@ -992,6 +1077,28 @@ mod tests {
 
     fn theme(name: &str) -> LoadedTheme {
         crate::load_desktop_theme("../../themes", name).expect("theme should load")
+    }
+
+    #[test]
+    fn refresh_leaves_a_modified_lock_screen_alone() {
+        let dir = test_dir("lock-modified");
+        let image = dir.join("wallpaper.png");
+
+        fs::write(&image, b"not really a png").unwrap();
+        desktop_assets::WallpaperState::new(&dir)
+            .set(&image, "test")
+            .unwrap();
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+
+        let file = destination(&dir, "hyprlock/hyprlock.conf");
+
+        fs::write(&file, "# edited by hand\n").unwrap();
+
+        let error = refresh_lock_screen_config(&dir, &theme("cyberpunk"))
+            .expect_err("a modified file must not be refreshed");
+
+        assert!(error.to_string().contains("modified by you"));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "# edited by hand\n");
     }
 
     #[test]

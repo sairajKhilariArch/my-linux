@@ -216,6 +216,19 @@ fn data_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".local/share"))
 }
 
+fn write_or_remove(file: PathBuf, path: Option<&Path>) -> Result<(), AssetError> {
+    match path {
+        Some(path) => {
+            install_content(path.to_string_lossy().as_bytes(), &file).map_err(AssetError::from)
+        }
+        None => match fs::remove_file(&file) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        },
+    }
+}
+
 /// The wallpaper recorded under an installation root.
 #[derive(Debug, Clone)]
 pub struct WallpaperState {
@@ -245,6 +258,17 @@ impl WallpaperState {
 
     pub fn previous(&self) -> Option<PathBuf> {
         read_path(&self.previous_file())
+    }
+
+    /// Restores the recorded current and previous wallpapers without adding a
+    /// history entry. This undoes the state change of a failed operation.
+    pub fn restore_state(
+        &self,
+        current: Option<&Path>,
+        previous: Option<&Path>,
+    ) -> Result<(), AssetError> {
+        write_or_remove(self.current_file(), current)?;
+        write_or_remove(self.previous_file(), previous)
     }
 
     /// Records `path` as the active wallpaper and keeps the old one as previous.
@@ -420,6 +444,34 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
 
         directory
+    }
+
+    #[test]
+    fn restores_recorded_state_without_touching_history() {
+        let directory = scratch("restore-state");
+        let first = directory.join("first.png");
+        let second = directory.join("second.png");
+
+        fs::write(&first, b"first").unwrap();
+        fs::write(&second, b"second").unwrap();
+
+        let state = WallpaperState::new(&directory);
+
+        state.set(&first, "apply").unwrap();
+        state.set(&second, "apply").unwrap();
+
+        let history = state.history().len();
+
+        state.restore_state(Some(&first), Some(&first)).unwrap();
+
+        assert_eq!(state.current(), Some(first.clone()));
+        assert_eq!(state.previous(), Some(first.clone()));
+        assert_eq!(state.history().len(), history);
+
+        state.restore_state(None, None).unwrap();
+
+        assert_eq!(state.current(), None);
+        assert_eq!(state.previous(), None);
     }
 
     #[test]

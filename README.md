@@ -261,7 +261,10 @@ files are read; `wallpaper preview` draws them with ANSI truecolor.
 `state/wallpaper` and `state/wallpaper-history.log`, then switches the desktop
 with `swww` or `hyprpaper` when one is detected. Without a wallpaper daemon the
 choice is recorded and nothing on the desktop changes; `wallpaper restore`
-returns to the previous wallpaper.
+returns to the previous wallpaper. Both commands, and applying a wallpaper in
+the GUI, refresh the installed Hyprlock configuration so the lock screen uses
+the new image. A lock screen file you edited by hand is never overwritten; apply
+the theme to replace it.
 
 `wallpaper palette` analyses the image, prints the dominant colours and a
 proposed palette, and does nothing else unless `--save` (write a user theme) or

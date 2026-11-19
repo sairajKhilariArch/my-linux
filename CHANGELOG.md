@@ -5,6 +5,52 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-11-19
+
+### Added
+
+- Wallpaper changes refresh the Hyprland lock screen configuration. One core
+  function, `refresh_lock_screen_config`, is used by `wallpaper apply`,
+  `wallpaper restore` and the GUI wallpaper manager, so the shell and graphical
+  paths cannot drift apart.
+- The refresh only touches a file the installation owns and only while it is
+  unmodified, rewrites it atomically and updates its recorded digest so `doctor`
+  still reports the file as unmodified. Without an installed lock screen
+  configuration nothing is created.
+
+### Fixed
+
+- Profile application records its wallpaper before the transaction, but now
+  restores the previous current/previous wallpaper state when the transaction
+  fails instead of leaving state behind for a configuration that was never
+  installed.
+- The GUI theme editor removes the written theme file when the saved theme does
+  not load, instead of leaving a broken theme that `list` would report forever.
+- A Hyprlock file edited by hand is left alone by a wallpaper refresh and the
+  command reports why, rather than silently discarding the edit.
+
+### Review of 0.22.0–0.24.0
+
+- Simplified the wallpaper/lock-screen path: rendering, validation, digest
+  bookkeeping and event logging live in one core function rather than in each
+  caller; the new `WallpaperState::restore_state` replaces ad-hoc state rollback.
+- Verified the override, shadow and render-context changes for failure safety:
+  invalid overrides cannot be saved, previews remain read-only, and every
+  generated file is validated before the atomic install.
+
+### Tests
+
+- CLI: a wallpaper apply changes the lock screen from the themed colour to the
+  wallpaper path.
+- Core: a modified lock screen is refused; failed profile application restores
+  the wallpaper state; lock-screen refresh keeps the digest current.
+- Assets: state restore clears current/previous without writing history.
+- GUI: a theme that fails validation is removed after saving.
+
+### Changed
+
+- Workspace version 0.25.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.24.0] - 2026-11-19
 
 ### Added
