@@ -804,7 +804,7 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 
 ## Phase 1 — Finish the current foundation
 
-**Current phase: In progress**
+**Current phase: Complete**
 
 - [x] Rust workspace.
 - [x] Theme engine.
@@ -818,14 +818,16 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 - [x] Atomic restoration function.
 - [x] Desktop Core integration.
 - [x] Initial test installation.
-- [x] 23 workspace tests passing.
+- [x] Workspace test suite passing (config manager, theme engine, core, CLI integration).
 - [x] Cyberpunk test installation verified.
-- [ ] Add CLI restore command.
-- [ ] Verify restoration manually.
-- [ ] Test repeated apply operations.
-- [ ] Add CLI integration tests.
-- [ ] Add installation failure tests.
-- [ ] Improve configuration path and permission handling.
+- [x] Add CLI restore command.
+- [x] Verify restoration manually.
+- [x] Test repeated apply operations.
+- [x] Add CLI integration tests.
+- [x] Add installation failure tests.
+- [x] Improve configuration path and permission handling.
+
+**Status:** Complete (v0.4.0).
 
 **Acceptance:** The complete CLI workflow must work inside a test directory without modifying the real desktop.
 
