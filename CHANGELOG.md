@@ -5,6 +5,36 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-11-19
+
+### Added
+
+- New `desktop/repository` crate: a community repository client for themes and
+  extensions. An index is a TOML file (`[repository]` plus `[[package]]`
+  entries) whose package sources are local paths, `file://` URLs or absolute
+  paths; the index itself can be a local directory or a git URL.
+- Index validation: schema version, non-empty name/description, valid package
+  ids, known `kind` (`theme` | `extension`), unique ids, empty sources and empty
+  fields are all rejected with actionable messages.
+- Installation reuses the existing validators: themes are loaded through the
+  theme registry and written as normalised user themes, extensions go through
+  `ExtensionRegistry::import`, so a repository can never install content that
+  the manual path would refuse. Existing installs require `--force`.
+- `repository list|search|info|install|sync` with `--index <path|git-url>` or
+  `MY_LINUX_REPOSITORY`; fetched indexes are cached under
+  `$XDG_CACHE_HOME/my-linux/repository` (`MY_LINUX_REPOSITORY_CACHE` overrides
+  it) and `git clone`/`git pull` is used for remote locations.
+- `packages/community-index.toml`: a working example index for the built-in
+  Futuristic theme and the SwayNC extension.
+- 7 repository tests (index parsing, source resolution, install, reinstall,
+  fetch, missing location) and 3 CLI end-to-end tests.
+
+### Changed
+
+- Workspace version 0.19.0; `PKGBUILD` `pkgver` follows it.
+- Phase 11 now covers community themes and extensions through a repository
+  index; only a hosted marketplace service remains out of scope.
+
 ## [0.18.0] - 2026-11-19
 
 ### Added

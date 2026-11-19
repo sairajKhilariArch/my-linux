@@ -1,0 +1,11 @@
+[package]
+name = "desktop-repository"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+config-manager = { path = "../config-manager" }
+desktop-extensions = { path = "../extensions" }
+theme-engine = { path = "../theme-engine" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"

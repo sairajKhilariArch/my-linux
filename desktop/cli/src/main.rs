@@ -24,6 +24,7 @@ use desktop_installer::{
     InstallLayout, InstallOptions, default_prefix, dependency_report, detect_environment, install,
     install_status, uninstall, upgrade,
 };
+use desktop_repository as repository;
 
 use std::env;
 use std::fs;
@@ -104,6 +105,18 @@ Profile commands:
                            Apply a complete desktop profile
   profile restore          Apply the previously active profile
   profile current          Show the active and previous profiles
+
+Repository commands:
+  repository list [--index <path|git-url>]
+                           List packages in a community repository index
+  repository search <query> [--index ...]
+                           Search packages by id, name or description
+  repository info <id> [--index ...]
+                           Show one package
+  repository install <id> [--index ...] [--force]
+                           Install a theme or extension from the repository
+  repository sync [<location>]
+                           Fetch or update an index in the cache
 
 Extension commands:
   extensions list          List built-in and user extensions
@@ -734,6 +747,165 @@ fn command_extensions(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::e
 
         other => {
             return Err(format!("Unknown extensions command: {other}\n\n{HELP}").into());
+        }
+    }
+
+    Ok(())
+}
+
+/// Index location from `--index` or `$MY_LINUX_REPOSITORY`.
+fn repository_location(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(location) = value_of(args, "--index") {
+        return Ok(location.to_string());
+    }
+
+    if let Some(location) = env::var_os("MY_LINUX_REPOSITORY") {
+        return Ok(PathBuf::from(location).display().to_string());
+    }
+
+    Err("No repository index: pass --index <path|git-url> or set MY_LINUX_REPOSITORY".into())
+}
+
+fn command_repository(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let subcommand = rest.first().map(String::as_str).unwrap_or("list");
+    let arguments = rest.get(1..).unwrap_or(&[]);
+
+    match subcommand {
+        "list" => {
+            let location = repository_location(arguments)?;
+            let index = repository::load(&location, repository::cache_dir())?;
+
+            println!("{}", index.name);
+
+            if !index.description.is_empty() {
+                println!("  {}", index.description);
+            }
+
+            println!("  index: {}", index.path.display());
+            println!();
+
+            if index.packages.is_empty() {
+                println!("No packages in this index.");
+            }
+
+            for package in &index.packages {
+                println!(
+                    "  {:<16} {:<10} {:<9} {}",
+                    package.id,
+                    package.kind.label(),
+                    package.version,
+                    package.description
+                );
+            }
+        }
+
+        "search" => {
+            let query = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme repository search <query> [--index <location>]")?;
+            let location = repository_location(arguments)?;
+            let index = repository::load(&location, repository::cache_dir())?;
+            let matches = index.search(query);
+
+            println!(
+                "{} package(s) matching `{query}` in {}:",
+                matches.len(),
+                index.name
+            );
+
+            for package in matches {
+                println!(
+                    "  {:<16} {:<10} {}",
+                    package.id,
+                    package.kind.label(),
+                    package.description
+                );
+            }
+        }
+
+        "info" => {
+            let id = arguments
+                .first()
+                .ok_or("Usage: my-linux-theme repository info <id> [--index <location>]")?;
+            let location = repository_location(arguments)?;
+            let index = repository::load(&location, repository::cache_dir())?;
+            let package = index
+                .find(id)
+                .ok_or_else(|| format!("Unknown package `{id}` in {}", index.name))?;
+
+            println!("{}", package.name);
+            println!("  id:          {}", package.id);
+            println!("  kind:        {}", package.kind.label());
+            println!("  version:     {}", package.version);
+            println!("  description: {}", package.description);
+
+            if let Some(author) = &package.author {
+                println!("  author:      {author}");
+            }
+
+            println!("  source:      {}", package.source.display());
+            println!(
+                "  available:   {}",
+                if package.source.exists() {
+                    "yes"
+                } else {
+                    "no (the content is missing)"
+                }
+            );
+        }
+
+        "install" => {
+            let id = arguments.first().ok_or(
+                "Usage: my-linux-theme repository install <id> [--index <location>] [--force]",
+            )?;
+            let location = repository_location(arguments)?;
+            let index = repository::load(&location, repository::cache_dir())?;
+            let package = index
+                .find(id)
+                .ok_or_else(|| format!("Unknown package `{id}` in {}", index.name))?;
+            let path = repository::install(
+                package,
+                user_themes_dir(),
+                &extension_registry(),
+                has_flag(arguments, "--force"),
+            )?;
+
+            println!("Installed {} `{}`.", package.kind.label(), package.id);
+            println!("Path: {}", path.display());
+
+            if package.kind == repository::index::PackageKind::Theme {
+                println!("Apply with: my-linux-theme apply {}", package.id);
+            } else {
+                println!(
+                    "Enable with: my-linux-theme extensions enable {}",
+                    package.id
+                );
+            }
+
+            if !root.is_dir() {
+                println!(
+                    "Note: the installation root {} does not exist yet; run `apply` once.",
+                    root.display()
+                );
+            }
+        }
+
+        "sync" => {
+            let location = match arguments.first() {
+                Some(location) => location.clone(),
+                None => repository_location(arguments)?,
+            };
+            let path = repository::fetch(&location, repository::cache_dir())?;
+
+            println!("Repository ready: {}", path.display());
+
+            if path.is_dir() && !path.join(repository::INDEX_FILE).is_file() {
+                println!("Warning: no {} in that repository.", repository::INDEX_FILE);
+            }
+        }
+
+        other => {
+            return Err(format!("Unknown repository command: {other}\n\n{HELP}").into());
         }
     }
 
@@ -2530,6 +2702,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "logs" => command_logs(&root, rest)?,
 
         "extensions" => command_extensions(&root, rest)?,
+
+        "repository" => command_repository(&root, rest)?,
 
         "integrations" => {
             let subcommand = rest.first().map(String::as_str).unwrap_or("list");

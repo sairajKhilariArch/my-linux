@@ -1,0 +1,31 @@
+# Example community repository index.
+#
+# Serve this file from a git repository and point My Linux at it:
+#   my-linux-theme repository list --index https://github.com/you/my-linux-themes
+#   my-linux-theme repository install aurora --index <location>
+#
+# Package sources are relative to this file. A theme source is a directory with
+# colors/palette.toml; an extension source is a directory with extension.toml.
+
+[repository]
+schema = 1
+name = "My Linux Community"
+description = "Example index shipped with the project"
+
+[[package]]
+id = "futuristic"
+kind = "theme"
+name = "Neon Horizon"
+version = "1.0.0"
+description = "Dark futuristic theme with violet and cyan accents"
+author = "My Linux"
+source = "../themes/futuristic"
+
+[[package]]
+id = "swaync"
+kind = "extension"
+name = "SwayNC"
+version = "1.0.0"
+description = "Notification centre styling matching the active theme"
+author = "My Linux"
+source = "../extensions/swaync"

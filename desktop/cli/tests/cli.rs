@@ -1230,3 +1230,217 @@ fn a_broken_extension_does_not_block_the_listing() {
     assert!(out.contains("Warning:"));
     assert!(out.contains("broken"));
 }
+
+/// Builds a repository index with one theme and one extension package.
+fn repository_fixture(root: &TempRoot) -> PathBuf {
+    let theme = root.join("repository/aurora");
+
+    fs::create_dir_all(theme.join("colors")).unwrap();
+    fs::write(
+        theme.join("colors/palette.toml"),
+        "[theme]\nschema = 1\nname = \"Aurora\"\nid = \"aurora\"\nversion = \"1.0.0\"\ndescription = \"A cool blue theme\"\n\n[colors]\nbackground = \"#0A0F1E\"\nsurface = \"#141B30\"\nsurface_alt = \"#1E2742\"\nprimary = \"#112233\"\nsecondary = \"#44CCFF\"\ntext = \"#EEF3FF\"\ntext_muted = \"#8899BB\"\nborder = \"#223355\"\nsuccess = \"#33DD88\"\nwarning = \"#FFCC44\"\nerror = \"#FF5566\"\n\n[colors.states]\nactive = \"#112233\"\nhover = \"#44CCFF\"\nselected = \"#1E2742\"\n",
+    )
+    .unwrap();
+
+    let extension = root.join("repository/widget");
+
+    fs::create_dir_all(&extension).unwrap();
+    fs::write(
+        extension.join("extension.toml"),
+        "[extension]\nschema = 1\nid = \"widget\"\nname = \"Widget\"\nversion = \"1.0.0\"\ndescription = \"A widget extension\"\nformat = \"text\"\ndestination = \"widget/style.conf\"\ntemplate = \"template.txt\"\n",
+    )
+    .unwrap();
+    fs::write(
+        extension.join("template.txt"),
+        "accent = {{colors.primary}}\n",
+    )
+    .unwrap();
+
+    let index = root.join("repository/index.toml");
+
+    fs::write(
+        &index,
+        format!(
+            "[repository]\nschema = 1\nname = \"Test Repository\"\ndescription = \"Packages used by the tests\"\n\n[[package]]\nid = \"aurora\"\nkind = \"theme\"\nname = \"Aurora\"\nversion = \"1.0.0\"\ndescription = \"A cool blue theme\"\nauthor = \"Someone\"\nsource = \"{}\"\n\n[[package]]\nid = \"widget\"\nkind = \"extension\"\nname = \"Widget\"\nversion = \"1.0.0\"\ndescription = \"A widget extension\"\nsource = \"{}\"\n",
+            theme.display(),
+            extension.display()
+        ),
+    )
+    .unwrap();
+
+    index
+}
+
+#[test]
+fn repository_lists_searches_and_installs_a_theme() {
+    let root = TempRoot::new("repository-theme");
+    let index = repository_fixture(&root);
+    let user_themes = root.join("user-themes");
+    let user_extensions = root.join("user-extensions");
+    let envs = [
+        ("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap()),
+        (
+            "MY_LINUX_USER_EXTENSIONS",
+            user_extensions.to_str().unwrap(),
+        ),
+    ];
+
+    let list = run_env(
+        root.path(),
+        &["repository", "list", "--index", index.to_str().unwrap()],
+        &envs,
+    );
+    assert!(list.status.success(), "{}", stderr(&list));
+
+    let out = stdout(&list);
+
+    assert!(out.contains("Test Repository"));
+    assert!(out.contains("aurora"));
+    assert!(out.contains("widget"));
+
+    let search = run_env(
+        root.path(),
+        &[
+            "repository",
+            "search",
+            "cool",
+            "--index",
+            index.to_str().unwrap(),
+        ],
+        &envs,
+    );
+    assert!(search.status.success(), "{}", stderr(&search));
+    assert!(stdout(&search).contains("aurora"));
+    assert!(!stdout(&search).contains("widget"));
+
+    let install = run_env(
+        root.path(),
+        &[
+            "repository",
+            "install",
+            "aurora",
+            "--index",
+            index.to_str().unwrap(),
+        ],
+        &envs,
+    );
+    assert!(install.status.success(), "{}", stderr(&install));
+    let installed_palette = user_themes.join("aurora/colors/palette.toml");
+
+    assert!(installed_palette.is_file());
+    assert!(
+        fs::read_to_string(&installed_palette)
+            .unwrap()
+            .contains("#112233")
+    );
+
+    // The installed theme loads through the normal registry.
+    let info = run_env(root.path(), &["info", "aurora"], &envs);
+    assert!(info.status.success(), "{}", stderr(&info));
+    assert!(stdout(&info).contains("#112233"));
+    assert!(stdout(&info).contains("Aurora"));
+
+    // Installing twice needs --force.
+    let again = run_env(
+        root.path(),
+        &[
+            "repository",
+            "install",
+            "aurora",
+            "--index",
+            index.to_str().unwrap(),
+        ],
+        &envs,
+    );
+    assert!(!again.status.success());
+    assert!(stderr(&again).contains("already installed"));
+
+    let forced = run_env(
+        root.path(),
+        &[
+            "repository",
+            "install",
+            "aurora",
+            "--index",
+            index.to_str().unwrap(),
+            "--force",
+        ],
+        &envs,
+    );
+    assert!(forced.status.success(), "{}", stderr(&forced));
+}
+
+#[test]
+fn repository_installs_and_applies_an_extension() {
+    let root = TempRoot::new("repository-extension");
+    let index = repository_fixture(&root);
+    let user_themes = root.join("user-themes");
+    let user_extensions = root.join("user-extensions");
+    let envs = [
+        ("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap()),
+        (
+            "MY_LINUX_USER_EXTENSIONS",
+            user_extensions.to_str().unwrap(),
+        ),
+    ];
+
+    let install = run_env(
+        root.path(),
+        &[
+            "repository",
+            "install",
+            "widget",
+            "--index",
+            index.to_str().unwrap(),
+        ],
+        &envs,
+    );
+    assert!(install.status.success(), "{}", stderr(&install));
+    assert!(user_extensions.join("widget/extension.toml").is_file());
+
+    let enable = run_env(root.path(), &["extensions", "enable", "widget"], &envs);
+    assert!(enable.status.success(), "{}", stderr(&enable));
+
+    let apply = run_env(root.path(), &["apply", "cyberpunk"], &envs);
+    assert!(apply.status.success(), "{}", stderr(&apply));
+    assert!(root.read("widget/style.conf").contains("accent = #FF235A"));
+}
+
+#[test]
+fn repository_rejects_unknown_packages_and_missing_indexes() {
+    let root = TempRoot::new("repository-errors");
+    let index = repository_fixture(&root);
+    let user_themes = root.join("user-themes");
+    let envs = [("MY_LINUX_USER_THEMES", user_themes.to_str().unwrap())];
+
+    let unknown = run_env(
+        root.path(),
+        &[
+            "repository",
+            "info",
+            "nope",
+            "--index",
+            index.to_str().unwrap(),
+        ],
+        &envs,
+    );
+    assert!(!unknown.status.success());
+    assert!(stderr(&unknown).contains("Unknown package"));
+
+    let missing = run_env(
+        root.path(),
+        &[
+            "repository",
+            "list",
+            "--index",
+            "/nonexistent/my-linux-repository",
+        ],
+        &envs,
+    );
+    assert!(!missing.status.success());
+    assert!(stderr(&missing).contains("No repository"));
+
+    let unset = run_env(root.path(), &["repository", "list"], &envs);
+    assert!(!unset.status.success());
+    assert!(stderr(&unset).contains("No repository index"));
+}

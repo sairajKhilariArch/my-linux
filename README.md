@@ -40,7 +40,8 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Native GUI: dashboard, gallery, editor, applications, wallpapers, profiles, recovery | Implemented |
 | Installation, upgrade, uninstall and verification | Implemented |
 | User extensions: manifest, template, discovery, import/export, enable state | Implemented |
-| Community theme and extension repositories, marketplace | Not implemented |
+| Community repository: index, search, install of themes and extensions | Implemented |
+| Hosted marketplace service | Not implemented (needs a server) |
 | Arch PKGBUILD, desktop entry, icon and release tarballs | Implemented |
 
 ## Build and verify
@@ -135,6 +136,11 @@ cargo build --workspace
 ./target/debug/my-linux-theme profile restore
 ./target/debug/my-linux-theme profile export my-desktop ./my-desktop.toml
 ./target/debug/my-linux-theme profile remove my-desktop
+
+# Repository
+./target/debug/my-linux-theme repository list --index packages/community-index.toml
+./target/debug/my-linux-theme repository search neon --index packages/community-index.toml
+./target/debug/my-linux-theme repository install swaync --index packages/community-index.toml
 
 # Extensions
 ./target/debug/my-linux-theme extensions list
@@ -412,6 +418,37 @@ and restored like any other generated file. `swaync` ships as a built-in
 example. Extensions are ordinary content: `extensions create` writes a starter
 template, and `extensions import`/`export` move a directory between machines.
 
+## Community repository
+
+A repository is a TOML index and the content it references. It can live in a git
+repository, on a shared path or in a local folder:
+
+```toml
+[repository]
+schema = 1
+name = "My Linux Community"
+
+[[package]]
+id = "aurora"
+kind = "theme"            # theme | extension
+name = "Aurora"
+version = "1.0.0"
+description = "A cool blue theme"
+source = "themes/aurora"  # relative to the index, or absolute
+```
+
+```bash
+my-linux-theme repository list --index packages/community-index.toml
+my-linux-theme repository install aurora --index https://github.com/you/themes
+my-linux-theme repository sync https://github.com/you/themes
+```
+
+Remote indexes are cloned into `$XDG_CACHE_HOME/my-linux/repository` with `git`
+and updated with `git pull --ff-only`; a local path is used in place. Installing
+never bypasses validation: themes load through the theme registry, extensions
+through the extension registry, and an existing installation needs `--force`.
+`--index` can be replaced by `MY_LINUX_REPOSITORY`.
+
 ## Installation root layout
 
 ```text
@@ -469,6 +506,7 @@ desktop/
 ├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
 ├── profiles/        # profile schema, registry and profile application
 ├── extensions/      # extension manifest, template rendering and registry
+├── repository/      # community index client for themes and extensions
 ├── installer/       # install, upgrade, verify, uninstall and the manifest
 ├── gui/             # native graphical application (eframe)
 ├── components/      # shared desktop components (placeholder)

@@ -1117,8 +1117,8 @@ packaged application remain outstanding because they need a graphical review.
 - [x] Extension output applied through the normal transaction (backup, rollback,
       restore, journal).
 - [x] Dynamic wallpaper palettes and automatic theme generation (Phase 6).
-- [ ] Community theme repository.
-- [ ] Theme marketplace and extension discovery service.
+- [x] Community theme and extension repository (index, search, install).
+- [ ] Hosted theme marketplace and discovery service (needs a server).
 - [ ] Additional desktop environments and distributions.
 
 | Area | Implementation |
@@ -1133,6 +1133,7 @@ packaged application remain outstanding because they need a graphical review.
 | Commands | `extensions list/info/render/create/import/export/remove/enable/disable/status`, `extensions apply` |
 | Built-in example | `extensions/swaync` → `swaync/style.css` with `swaync-client --reload-css` |
 | Packaging | installed into `<prefix>/share/my-linux/extensions`, manifest-recorded, preserved on upgrade when edited, removed on uninstall |
+| Repository | `desktop/repository`: TOML index, local/git locations, search, install of themes and extensions, cache in `$XDG_CACHE_HOME/my-linux/repository` |
 
 **Status:** Complete (v0.17.0). Covered by 14 crate tests and 5 CLI
 end-to-end tests; the built-in extension was also enabled, applied with two
