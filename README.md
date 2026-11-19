@@ -172,7 +172,7 @@ it no process is touched.
 | `dunst` | Notifications | `dunst/dunstrc` | `dunstctl reload` |
 | `mako` | Notifications | `mako/config` | `makoctl reload` |
 | `wofi` | Wofi launcher | `wofi/style.css` | applied on next launch |
-| `hyprlock` | Lock screen (theme colours plus the active wallpaper) | `hyprlock/hyprlock.conf` | applied on next lock |
+| `hyprlock` | Lock screen: clock, input field, caps/num lock indicators, active wallpaper | `hyprlock/hyprlock.conf` | applied on next lock |
 | `gtk3` | GTK 3 | `gtk-3.0/my-linux.css` | applied on next start |
 | `gtk4` | GTK 4 | `gtk-4.0/my-linux.css` | applied on next start |
 | `qt` | Qt (qt6ct/qt5ct) | `qt6ct/colors/my-linux.conf` | applied on next start |

@@ -97,11 +97,18 @@ pub fn render_with_wallpaper(theme: &LoadedTheme, wallpaper: Option<&Path>) -> S
     output.push_str("    valign = center\n");
     output.push_str("}\n\n");
 
+    let metrics = theme.metrics_for("hyprlock");
+
     output.push_str("input-field {\n");
     output.push_str("    size = 240, 44\n");
-    output.push_str("    outline_thickness = 2\n");
+    output.push_str(&format!(
+        "    outline_thickness = {}\n",
+        metrics.border_width
+    ));
+    output.push_str(&format!("    rounding = {}\n", metrics.radius));
     output.push_str("    dots_size = 0.2\n");
     output.push_str("    dots_spacing = 0.3\n");
+    output.push_str(&format!("    font_family = {}\n", typography.font_family));
     output.push_str(&format!(
         "    outer_color = {}\n",
         rgba(colors.primary, "ff")
@@ -111,6 +118,25 @@ pub fn render_with_wallpaper(theme: &LoadedTheme, wallpaper: Option<&Path>) -> S
         rgba(colors.surface, "ff")
     ));
     output.push_str(&format!("    font_color = {}\n", rgba(colors.text, "ff")));
+    output.push_str(&format!(
+        "    check_color = {}\n",
+        rgba(colors.secondary, "ff")
+    ));
+    output.push_str(&format!("    fail_color = {}\n", rgba(colors.error, "ff")));
+    output.push_str("    fail_text = <i>$FAIL <b>($ATTEMPTS)</b></i>\n");
+    output.push_str(&format!(
+        "    capslock_color = {}\n",
+        rgba(colors.primary, "ff")
+    ));
+    output.push_str(&format!(
+        "    numlock_color = {}\n",
+        rgba(colors.success, "ff")
+    ));
+    output.push_str(&format!(
+        "    bothlock_color = {}\n",
+        rgba(colors.warning, "ff")
+    ));
+    output.push_str("    swap_font_color = true\n");
     output.push_str("    fade_on_empty = false\n");
     output.push_str("    placeholder_text = <i>Password...</i>\n");
     output.push_str("    position = 0, -120\n");
@@ -140,6 +166,14 @@ mod tests {
         assert!(conf.contains("input-field {"));
         assert!(conf.contains("$TIME"));
         assert!(conf.contains("FF235Aff"));
+        assert!(conf.contains("outline_thickness = 2"));
+        assert!(conf.contains("rounding = 8"));
+        assert!(conf.contains("font_family = Inter"));
+        assert!(conf.contains("check_color = rgba(00E6FFff)"));
+        assert!(conf.contains("fail_color = rgba(FF235Aff)"));
+        assert!(conf.contains("capslock_color = rgba(FF235Aff)"));
+        assert!(conf.contains("numlock_color = rgba(39FF88ff)"));
+        assert!(conf.contains("bothlock_color = rgba(FFE14Aff)"));
     }
 
     #[test]

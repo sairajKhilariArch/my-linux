@@ -43,8 +43,8 @@ Theme commands:
   render <theme> [--integration <id>]
                            Print a generated application configuration
   create <id> [--from <theme> | --base <#RRGGBB>]
-  duplicate <from> <to>    Copy a theme, including tokens and overrides
                            Create a user theme
+  duplicate <from> <to>    Copy a theme, including tokens and overrides
   import <path> [--as <id>]
                            Import a theme directory or .toml file
   export <theme> [file]    Export a theme as a portable .toml file

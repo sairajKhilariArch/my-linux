@@ -5,6 +5,30 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-11-19
+
+### Added
+
+- Lock screen indicators: the generated Hyprlock input field now sets
+  `check_color` (secondary), `fail_color` and `fail_text` (error palette),
+  `capslock_color` (primary), `numlock_color` (success) and `bothlock_color`
+  (warning), with `swap_font_color`. Locks and authentication results are
+  visible in the theme palette instead of Hyprlock defaults.
+- The input field now follows the theme border width, corner radius and
+  interface font instead of hard-coded values, and honours `hyprlock` token
+  overrides.
+- Fixed the CLI help block where the `create` description was printed after the
+  `duplicate` usage line.
+
+### Tests
+
+- Hyprlock: the lock screen config carries the indicator colours, theme border
+  width, radius and font.
+
+### Changed
+
+- Workspace version 0.26.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.25.0] - 2026-11-19
 
 ### Added
