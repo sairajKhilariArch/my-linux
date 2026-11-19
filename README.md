@@ -19,6 +19,7 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Area | State |
 |---|---|
 | Theme discovery, validation, schema versioning, inheritance | Implemented |
+| Typography and geometry tokens (font, size, radius, spacing, border, opacity) | Implemented |
 | Theme creation, import, export, removal, palette generation | Implemented |
 | Waybar, Rofi, Hyprland, Kitty, Dunst, Hyprlock rendering | Implemented |
 | GTK 3/4, Qt, Zsh, Neovim, Yazi, Btop rendering | Implemented |
@@ -381,6 +382,21 @@ destination = "my-widget/style.css"
 template = "template.css"
 programs = ["my-widget-daemon"]
 reload = [["my-widget-daemon", "--reload"]]
+```
+
+A theme may also declare design tokens used by every renderer:
+
+```toml
+[typography]
+font_family = "Inter"
+mono_family = "JetBrainsMono Nerd Font"
+font_size = 11
+
+[metrics]
+radius = 8
+spacing = 8
+border_width = 2
+opacity = 100
 ```
 
 The template is rendered from the central palette: `{{colors.background}}`,

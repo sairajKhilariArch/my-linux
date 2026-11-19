@@ -68,11 +68,18 @@ pub fn render(theme: &LoadedTheme) -> String {
         "    col.inactive_border = {}\n",
         rgba(colors.border, "ff")
     ));
+    output.push_str(&format!(
+        "    border_size = {}\n",
+        theme.metrics.border_width
+    ));
     output.push_str("}\n\n");
 
     output.push_str("decoration {\n");
-    output.push_str("    rounding = 10\n");
-    output.push_str("    active_opacity = 1.0\n");
+    output.push_str(&format!("    rounding = {}\n", theme.metrics.radius));
+    output.push_str(&format!(
+        "    active_opacity = {:.2}\n",
+        f32::from(theme.metrics.opacity) / 100.0
+    ));
     output.push_str("    inactive_opacity = 0.94\n");
     output.push_str("    dim_inactive = false\n\n");
 
@@ -121,7 +128,8 @@ mod tests {
 
         assert!(conf.contains("col.active_border = rgba(FF235Aff) rgba(00E6FFff)"));
         assert!(conf.contains("col.inactive_border = rgba(592B50ff)"));
-        assert!(conf.contains("rounding = 10"));
+        assert!(conf.contains("rounding = 8"));
+        assert!(conf.contains("border_size = 2"));
         assert!(conf.contains("blur {"));
         assert!(conf.contains("source = ~/.config/hypr/my-linux.conf"));
     }

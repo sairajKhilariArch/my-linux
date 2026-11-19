@@ -525,7 +525,7 @@ fn starter_template(format: ExtensionFormat, name: &str, destination: &str) -> S
 
 /// A theme used only to check a scaffolded template before writing it.
 fn sample_theme() -> LoadedTheme {
-    use theme_engine::{Color, ThemeColors, ThemeMetadata};
+    use theme_engine::{Color, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeTypography};
 
     let color = Color::new(0, 0, 0);
 
@@ -555,6 +555,8 @@ fn sample_theme() -> LoadedTheme {
             hover: color,
             selected: color,
         },
+        typography: ThemeTypography::default(),
+        metrics: ThemeMetrics::default(),
         path: PathBuf::from("sample"),
     }
 }

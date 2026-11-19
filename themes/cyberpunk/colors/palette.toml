@@ -24,3 +24,15 @@ error = "#FF235A"
 active = "#FF235A"
 hover = "#00E6FF"
 selected = "#451B48"
+
+# Typography and geometry used by every generated configuration.
+[typography]
+font_family = "Inter"
+mono_family = "JetBrainsMono Nerd Font"
+font_size = 11
+
+[metrics]
+radius = 8
+spacing = 8
+border_width = 2
+opacity = 100

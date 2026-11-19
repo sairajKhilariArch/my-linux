@@ -90,16 +90,13 @@ pub fn render(theme: &LoadedTheme) -> String {
         hex(colors.selected)
     ));
 
-    output.push_str(
-        r#"* {
-    font-family: "JetBrainsMono Nerd Font", monospace;
-    font-size: 12px;
-    border: none;
-    border-radius: 8px;
-    min-height: 0;
-}
+    output.push_str(&format!(
+        "* {{\n    font-family: \"{}\", monospace;\n    font-size: {}px;\n    border: none;\n    border-radius: {}px;\n    min-height: 0;\n}}\n\n",
+        theme.typography.mono_family, theme.typography.font_size, theme.metrics.radius
+    ));
 
-window#waybar {
+    output.push_str(
+        r#"window#waybar {
     background: @main-bg;
     color: @main-fg;
 }

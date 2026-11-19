@@ -43,6 +43,11 @@ struct DraftTheme {
     success: [u8; 3],
     warning: [u8; 3],
     error: [u8; 3],
+    font_family: String,
+    mono_family: String,
+    font_size: u16,
+    radius: u8,
+    spacing: u8,
 }
 
 impl DraftTheme {
@@ -60,6 +65,27 @@ impl DraftTheme {
             success: to_rgb(base.colors.success),
             warning: to_rgb(base.colors.warning),
             error: to_rgb(base.colors.error),
+            font_family: base.typography.font_family.clone(),
+            mono_family: base.typography.mono_family.clone(),
+            font_size: base.typography.font_size,
+            radius: base.metrics.radius,
+            spacing: base.metrics.spacing,
+        }
+    }
+
+    fn typography(&self) -> desktop_core::ThemeTypography {
+        desktop_core::ThemeTypography {
+            font_family: self.font_family.clone(),
+            mono_family: self.mono_family.clone(),
+            font_size: self.font_size,
+        }
+    }
+
+    fn metrics(&self) -> desktop_core::ThemeMetrics {
+        desktop_core::ThemeMetrics {
+            radius: self.radius,
+            spacing: self.spacing,
+            ..self.base.metrics
         }
     }
 
@@ -734,6 +760,34 @@ impl MyLinuxApp {
             });
 
         ui.add_space(8.0);
+        ui.label(RichText::new("Typography and geometry").strong());
+
+        egui::Grid::new("editor-design")
+            .num_columns(2)
+            .spacing([16.0, 8.0])
+            .show(ui, |ui| {
+                ui.label("Interface font");
+                ui.text_edit_singleline(&mut draft.font_family);
+                ui.end_row();
+
+                ui.label("Monospace font");
+                ui.text_edit_singleline(&mut draft.mono_family);
+                ui.end_row();
+
+                ui.label("Font size");
+                ui.add(egui::DragValue::new(&mut draft.font_size).range(6..=48));
+                ui.end_row();
+
+                ui.label("Corner radius");
+                ui.add(egui::DragValue::new(&mut draft.radius).range(0..=32));
+                ui.end_row();
+
+                ui.label("Spacing");
+                ui.add(egui::DragValue::new(&mut draft.spacing).range(0..=48));
+                ui.end_row();
+            });
+
+        ui.add_space(8.0);
         ui.label(RichText::new("Preview").strong());
         swatches(ui, &draft.colors());
 
@@ -757,8 +811,13 @@ impl MyLinuxApp {
             let name = draft.name.trim().to_string();
             let base = draft.base.clone();
             let colors = draft.colors();
+            let typography = draft.typography();
+            let metrics = draft.metrics();
 
-            match self.state.save_theme(&id, &name, &base, &colors) {
+            match self
+                .state
+                .save_theme(&id, &name, &base, &colors, &typography, metrics)
+            {
                 Ok(message) => {
                     self.status = Some((true, message));
 
@@ -942,6 +1001,107 @@ impl MyLinuxApp {
                 cursor_size: self.asset_cursor_size,
             };
             let result = self.state.save_assets(&settings);
+            self.outcome(result);
+        }
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.heading("Extensions");
+        ui.label(
+            RichText::new(format!(
+                "{} extension(s) in {} and {}. An enabled extension is written with every apply, \
+                 inside the same transaction.",
+                self.state.extensions.len(),
+                self.state.extensions_registry.user_root().display(),
+                self.state.extensions_registry.builtin_root().display()
+            ))
+            .weak(),
+        );
+
+        ui.add_space(4.0);
+
+        let rows = self.state.extensions.clone();
+        let mut toggle: Option<(String, bool)> = None;
+        let mut remove: Option<String> = None;
+
+        if rows.is_empty() {
+            ui.label(
+                RichText::new("No extensions found. Add one to the user extension directory.")
+                    .small()
+                    .weak(),
+            );
+        }
+
+        egui::Grid::new("extensions")
+            .num_columns(5)
+            .striped(true)
+            .spacing([16.0, 6.0])
+            .show(ui, |ui| {
+                if rows.is_empty() {
+                    return;
+                }
+
+                ui.label(RichText::new("Extension").strong());
+                ui.label(RichText::new("Detected").strong());
+                ui.label(RichText::new("Destination").strong());
+                ui.label(RichText::new("Enabled").strong());
+                ui.label(RichText::new("Source").strong());
+                ui.end_row();
+
+                for row in &rows {
+                    ui.label(format!("{} {}", row.name, row.version));
+
+                    let detection = match &row.detected {
+                        Some(path) => RichText::new(path.display().to_string()).small(),
+                        None if row.programs.is_empty() => {
+                            RichText::new("no detection program").small().weak()
+                        }
+                        None => RichText::new(format!("not found ({})", row.programs.join(", ")))
+                            .small()
+                            .color(BAD),
+                    };
+
+                    ui.label(detection);
+
+                    let color = if row.installed { GOOD } else { Color32::GRAY };
+
+                    ui.label(
+                        RichText::new(format!("{} ({})", row.destination, row.state_label()))
+                            .small()
+                            .color(color),
+                    );
+
+                    let mut enabled = row.enabled;
+
+                    if ui.checkbox(&mut enabled, "").changed() {
+                        toggle = Some((row.id.clone(), enabled));
+                    }
+
+                    if row.source == "user" {
+                        if ui.small_button("Remove").clicked() {
+                            remove = Some(row.id.clone());
+                        }
+                    } else {
+                        ui.label(RichText::new("builtin").small().weak());
+                    }
+
+                    ui.end_row();
+                }
+            });
+
+        if let Some((id, enabled)) = toggle {
+            let result = if enabled {
+                self.state.enable_extension(&id)
+            } else {
+                self.state.disable_extension(&id)
+            };
+
+            self.outcome(result);
+        }
+
+        if let Some(id) = remove {
+            let result = self.state.remove_extension(&id);
             self.outcome(result);
         }
     }

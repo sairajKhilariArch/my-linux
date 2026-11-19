@@ -10,17 +10,20 @@ use desktop_core::assets::{
     read_settings, save_theme as save_wallpaper_theme, set_wallpaper, write_settings,
 };
 use desktop_core::config_manager::{digest_file, install_content};
+use desktop_core::extensions::{ExtensionRegistry, user_extensions_dir};
 use desktop_core::integrations;
 use desktop_core::log::{Event, read_events};
 use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::transaction::{
-    Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with, detect_modifications,
-    diagnose, read_history, recover_interrupted, restore_theme, rollback_theme,
+    Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with_extra,
+    detect_modifications, diagnose, read_history, recover_interrupted, restore_theme,
+    rollback_theme,
 };
 use desktop_core::{
-    LoadedTheme, Registry, ThemeColors, ThemeMetadata, ThemeSource, read_active_profile,
-    read_active_theme, read_previous_profile, render_from_parts, render_theme_toml, validate_id,
+    LoadedTheme, Registry, ThemeColors, ThemeMetadata, ThemeMetrics, ThemeSource, ThemeTypography,
+    read_active_profile, read_active_theme, read_previous_profile, render_theme_parts,
+    render_theme_toml, validate_id,
 };
 
 /// Directory of the built-in themes, in an installation or a source tree.
@@ -77,6 +80,39 @@ pub struct ThemeCard {
     pub description: String,
     pub source: &'static str,
     pub colors: ThemeColors,
+    pub typography: ThemeTypography,
+    pub metrics: ThemeMetrics,
+}
+
+/// One extension row in the application manager.
+#[derive(Debug, Clone)]
+pub struct ExtensionRow {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub destination: String,
+    pub source: &'static str,
+    pub programs: Vec<String>,
+    pub detected: Option<PathBuf>,
+    pub enabled: bool,
+    pub installed: bool,
+}
+
+impl ExtensionRow {
+    pub fn available(&self) -> bool {
+        self.detected.is_some()
+    }
+
+    pub fn state_label(&self) -> &'static str {
+        if self.installed {
+            "installed"
+        } else if self.enabled {
+            "enabled, not applied yet"
+        } else {
+            "not applied"
+        }
+    }
 }
 
 /// One integration row in the application manager.
@@ -143,6 +179,8 @@ pub struct GuiState {
     pub broken: Vec<String>,
     pub profiles_list: Vec<ProfileCard>,
     pub integrations: Vec<IntegrationRow>,
+    pub extensions_registry: ExtensionRegistry,
+    pub extensions: Vec<ExtensionRow>,
     pub wallpapers: Vec<WallpaperEntry>,
     pub active_theme: Option<String>,
     pub active_profile: Option<String>,
@@ -189,6 +227,11 @@ impl GuiState {
             broken: Vec::new(),
             profiles_list: Vec::new(),
             integrations: Vec::new(),
+            extensions_registry: ExtensionRegistry::new(
+                desktop_core::paths::builtin_extensions_dir(),
+                user_extensions_dir(),
+            ),
+            extensions: Vec::new(),
             wallpapers: Vec::new(),
             active_theme: None,
             active_profile: None,
@@ -234,6 +277,33 @@ impl GuiState {
         self.integrations = integrations_rows;
         self.modifications = modifications;
 
+        let discovery = self.extensions_registry.list();
+        let mut extension_rows = Vec::new();
+
+        for summary in &discovery.extensions {
+            let programs = summary.programs.clone();
+            let detected = {
+                let borrowed: Vec<&str> = programs.iter().map(String::as_str).collect();
+
+                desktop_core::integrations::detect(&borrowed)
+            };
+
+            extension_rows.push(ExtensionRow {
+                id: summary.id.clone(),
+                name: summary.name.clone(),
+                version: summary.version.clone(),
+                description: summary.description.clone(),
+                destination: summary.destination.clone(),
+                source: summary.source.label(),
+                programs,
+                detected,
+                enabled: summary.enabled,
+                installed: self.root.join(&summary.destination).is_file(),
+            });
+        }
+
+        self.extensions = extension_rows;
+
         let discovery = self.registry().list();
         let mut themes = Vec::new();
 
@@ -246,6 +316,8 @@ impl GuiState {
                     description: summary.description.clone(),
                     source: summary.source.label(),
                     colors: theme.colors.clone(),
+                    typography: theme.typography.clone(),
+                    metrics: theme.metrics,
                 });
             }
         }
@@ -295,8 +367,16 @@ impl GuiState {
         let theme = self.theme(id)?;
         let ids: Vec<String> = selected.iter().map(|id| id.to_string()).collect();
         let chosen = integrations::select(&ids)?;
-        let report =
-            apply_theme_with(&self.root, &theme, &chosen).map_err(|error| error.to_string())?;
+        let generated = self
+            .extensions_registry
+            .render_enabled(&theme)
+            .map_err(|error| error.to_string())?;
+        let extra: Vec<(String, String)> = generated
+            .iter()
+            .map(|extension| (extension.destination.clone(), extension.content.clone()))
+            .collect();
+        let report = apply_theme_with_extra(&self.root, &theme, &chosen, &extra)
+            .map_err(|error| error.to_string())?;
 
         self.refresh();
 
@@ -434,6 +514,8 @@ impl GuiState {
         name: &str,
         base: &ThemeCard,
         colors: &ThemeColors,
+        typography: &ThemeTypography,
+        metrics: ThemeMetrics,
     ) -> Result<String, String> {
         validate_id(id).map_err(|error| error.to_string())?;
 
@@ -464,8 +546,11 @@ impl GuiState {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
 
-        install_content(render_from_parts(&metadata, colors).as_bytes(), &file)
-            .map_err(|error| error.to_string())?;
+        install_content(
+            render_theme_parts(&metadata, colors, typography, metrics).as_bytes(),
+            &file,
+        )
+        .map_err(|error| error.to_string())?;
 
         self.registry()
             .load(id)
@@ -490,19 +575,16 @@ impl GuiState {
             return Err(format!("Theme `{id}` already exists"));
         }
 
-        let mut metadata = theme.metadata.clone();
-        metadata.id = id.clone();
+        let mut imported = theme.clone();
+        imported.metadata.id = id.clone();
         let file = self
             .user_themes
             .join(&id)
             .join("colors")
             .join("palette.toml");
 
-        install_content(
-            render_from_parts(&metadata, &theme.colors).as_bytes(),
-            &file,
-        )
-        .map_err(|error| error.to_string())?;
+        install_content(render_theme_toml(&imported).as_bytes(), &file)
+            .map_err(|error| error.to_string())?;
 
         self.refresh();
 
@@ -522,6 +604,55 @@ impl GuiState {
         fs::write(&output, rendered).map_err(|error| error.to_string())?;
 
         Ok(format!("Exported {id} to {}.", output.display()))
+    }
+
+    /// Enables an extension so every later apply writes it too.
+    pub fn enable_extension(&mut self, id: &str) -> Result<String, String> {
+        let settings = self
+            .extensions_registry
+            .enable(id)
+            .map_err(|error| error.to_string())?;
+
+        self.refresh();
+
+        Ok(format!("Enabled {id}. Settings: {}.", settings.display()))
+    }
+
+    /// Stops applying an extension.
+    pub fn disable_extension(&mut self, id: &str) -> Result<String, String> {
+        let settings = self
+            .extensions_registry
+            .disable(id)
+            .map_err(|error| error.to_string())?;
+
+        self.refresh();
+
+        Ok(format!("Disabled {id}. Settings: {}.", settings.display()))
+    }
+
+    /// Removes a user extension. Built-in extensions are refused.
+    pub fn remove_extension(&mut self, id: &str) -> Result<String, String> {
+        let directory = self
+            .extensions_registry
+            .remove(id)
+            .map_err(|error| error.to_string())?;
+
+        self.refresh();
+
+        Ok(format!(
+            "Removed extension {id} from {}.",
+            directory.display()
+        ))
+    }
+
+    /// Renders one extension with a theme, for the live preview.
+    pub fn render_extension(&self, id: &str, theme_id: &str) -> Result<String, String> {
+        let theme = self.theme(theme_id)?;
+
+        self.extensions_registry
+            .render(id, &theme)
+            .map(|generated| generated.content)
+            .map_err(|error| error.to_string())
     }
 
     /// Removes a user theme. Built-in themes are refused.
@@ -768,7 +899,14 @@ mod tests {
         };
 
         state
-            .save_theme("my-custom", "My Custom", &base, &colors)
+            .save_theme(
+                "my-custom",
+                "My Custom",
+                &base,
+                &colors,
+                &base.typography,
+                base.metrics,
+            )
             .unwrap();
 
         let loaded = state.registry().load("my-custom").unwrap();
@@ -783,13 +921,80 @@ mod tests {
 
         // Built-in ids cannot be overwritten.
         let error = state
-            .save_theme("cyberpunk", "Hijack", &base, &colors)
+            .save_theme(
+                "cyberpunk",
+                "Hijack",
+                &base,
+                &colors,
+                &base.typography,
+                base.metrics,
+            )
             .unwrap_err();
 
         assert!(error.contains("built-in"));
 
         state.remove_theme("my-custom").unwrap();
         assert!(!state.themes.iter().any(|theme| theme.id == "my-custom"));
+    }
+
+    #[test]
+    fn saves_design_tokens_and_manages_extensions() {
+        let mut state = state_for("design-tokens");
+        let user_extensions = state.root.join("user-extensions");
+
+        state.extensions_registry = ExtensionRegistry::new(
+            desktop_core::paths::builtin_extensions_dir(),
+            user_extensions,
+        );
+        state.refresh();
+
+        assert!(state.extensions.iter().any(|row| row.id == "swaync"));
+        assert!(state.extensions.iter().all(|row| !row.enabled));
+
+        state.enable_extension("swaync").unwrap();
+        state.apply_theme("cyberpunk", &["waybar"]).unwrap();
+
+        assert!(state.root.join("swaync/style.css").is_file());
+        assert!(
+            state
+                .extensions
+                .iter()
+                .any(|row| row.id == "swaync" && row.enabled && row.installed)
+        );
+
+        state.disable_extension("swaync").unwrap();
+        assert!(state.extensions.iter().all(|row| !row.enabled));
+
+        let base = state
+            .themes
+            .iter()
+            .find(|theme| theme.id == "cyberpunk")
+            .unwrap()
+            .clone();
+        let colors = base.colors.clone();
+        let typography = ThemeTypography {
+            font_family: "Inter".to_string(),
+            mono_family: "Iosevka".to_string(),
+            font_size: 13,
+        };
+        let metrics = ThemeMetrics {
+            radius: 5,
+            spacing: 9,
+            border_width: 1,
+            opacity: 96,
+        };
+
+        state
+            .save_theme("tokens", "Tokens", &base, &colors, &typography, metrics)
+            .unwrap();
+
+        let loaded = state.registry().load("tokens").unwrap();
+
+        assert_eq!(loaded.typography.mono_family, "Iosevka");
+        assert_eq!(loaded.typography.font_size, 13);
+        assert_eq!(loaded.metrics.radius, 5);
+        assert_eq!(loaded.metrics.border_width, 1);
+        assert_eq!(loaded.metrics.opacity, 96);
     }
 
     #[test]

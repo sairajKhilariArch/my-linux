@@ -58,8 +58,11 @@ pub fn render(theme: &LoadedTheme) -> String {
         colors.border.to_hex()
     ));
     output.push_str("    separator_color = frame\n");
-    output.push_str("    font = Monospace 10\n");
-    output.push_str("    corner_radius = 8\n");
+    output.push_str(&format!(
+        "    font = {} {}\n",
+        theme.typography.mono_family, theme.typography.font_size
+    ));
+    output.push_str(&format!("    corner_radius = {}\n", theme.metrics.radius));
     output.push_str("    transparency = 0\n");
     output.push_str("    icon_position = left\n");
     output.push_str("    format = \"<b>%s</b>\\n%b\"\n\n");

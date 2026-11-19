@@ -126,11 +126,11 @@ pub fn render(theme: &LoadedTheme) -> String {
         output.push_str(&format!("color{index} {}\n", color.to_hex()));
     }
 
-    output.push_str("\nfont_family JetBrainsMono Nerd Font\n");
+    output.push_str(&format!("\nfont_family {}\n", theme.typography.mono_family));
     output.push_str("bold_font auto\n");
     output.push_str("italic_font auto\n");
-    output.push_str("font_size 11.0\n");
-    output.push_str("window_padding_width 8\n");
+    output.push_str(&format!("font_size {}.0\n", theme.typography.font_size));
+    output.push_str(&format!("window_padding_width {}\n", theme.metrics.spacing));
     output.push_str("background_opacity 1.0\n");
     output.push_str("cursor_shape beam\n");
     output.push_str("cursor_blink_interval 0.5\n");

@@ -10,10 +10,10 @@ pub mod template;
 pub use generate::generate_palette;
 pub use loader::{
     BrokenTheme, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError, ThemeLocation,
-    ThemeMetadata, ThemeSource, ThemeSummary, load_theme, load_theme_by_id, load_theme_by_name,
-    parse_color, validate_id,
+    ThemeMetadata, ThemeMetrics, ThemeSource, ThemeSummary, ThemeTypography, load_theme,
+    load_theme_by_id, load_theme_by_name, parse_color, validate_id,
 };
-pub use template::{render_from_parts, render_theme_toml};
+pub use template::{render_from_parts, render_theme, render_theme_parts, render_theme_toml};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {

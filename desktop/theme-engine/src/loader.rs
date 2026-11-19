@@ -49,6 +49,71 @@ struct RawThemeFile {
     theme: RawMetadata,
     #[serde(default)]
     colors: toml::Table,
+    #[serde(default)]
+    typography: Option<RawTypography>,
+    #[serde(default)]
+    metrics: Option<RawMetrics>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawTypography {
+    #[serde(default)]
+    font_family: Option<String>,
+    #[serde(default)]
+    mono_family: Option<String>,
+    #[serde(default)]
+    font_size: Option<u16>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawMetrics {
+    #[serde(default)]
+    radius: Option<u8>,
+    #[serde(default)]
+    spacing: Option<u8>,
+    #[serde(default)]
+    border_width: Option<u8>,
+    #[serde(default)]
+    opacity: Option<u8>,
+}
+
+/// Typography used by every integration that renders text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeTypography {
+    pub font_family: String,
+    pub mono_family: String,
+    pub font_size: u16,
+}
+
+impl Default for ThemeTypography {
+    fn default() -> Self {
+        Self {
+            font_family: "Inter".to_string(),
+            mono_family: "JetBrainsMono Nerd Font".to_string(),
+            font_size: 11,
+        }
+    }
+}
+
+/// Geometry shared by the rendered configurations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemeMetrics {
+    pub radius: u8,
+    pub spacing: u8,
+    pub border_width: u8,
+    /// Window opacity in percent (`100` is fully opaque).
+    pub opacity: u8,
+}
+
+impl Default for ThemeMetrics {
+    fn default() -> Self {
+        Self {
+            radius: 8,
+            spacing: 8,
+            border_width: 2,
+            opacity: 100,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +149,8 @@ pub struct ThemeColors {
 pub struct LoadedTheme {
     pub metadata: ThemeMetadata,
     pub colors: ThemeColors,
+    pub typography: ThemeTypography,
+    pub metrics: ThemeMetrics,
     /// Directory or file the theme was loaded from.
     pub path: PathBuf,
 }
@@ -199,6 +266,8 @@ pub struct ThemeLocation {
 struct ResolvedTheme {
     metadata: ThemeMetadata,
     values: PaletteValues,
+    typography: ThemeTypography,
+    metrics: ThemeMetrics,
 }
 
 /// A registry of theme roots searched in order.
@@ -286,6 +355,8 @@ impl Registry {
         Ok(LoadedTheme {
             metadata: resolved.metadata,
             colors,
+            typography: resolved.typography,
+            metrics: resolved.metrics,
             path: entry.path,
         })
     }
@@ -373,18 +444,63 @@ impl Registry {
         let metadata = validate_metadata(raw.theme, expected_id)?;
 
         let mut values = PaletteValues::default();
+        let mut typography = ThemeTypography::default();
+        let mut metrics = ThemeMetrics::default();
 
         if let Some(parent) = &metadata.extends {
             let parent_entry = self
                 .find(parent)
                 .ok_or_else(|| ThemeLoadError::UnknownTheme(parent.clone()))?;
+            let parent = self.load_entry(&parent_entry, seen)?;
 
-            values = self.load_entry(&parent_entry, seen)?.values;
+            values = parent.values;
+            typography = parent.typography;
+            metrics = parent.metrics;
         }
 
         values.merge(&raw.colors);
 
-        Ok(ResolvedTheme { metadata, values })
+        if let Some(raw) = &raw.typography {
+            if let Some(family) = &raw.font_family {
+                typography.font_family = family.trim().to_string();
+            }
+
+            if let Some(family) = &raw.mono_family {
+                typography.mono_family = family.trim().to_string();
+            }
+
+            if let Some(size) = raw.font_size {
+                typography.font_size = size;
+            }
+        }
+
+        if let Some(raw) = &raw.metrics {
+            if let Some(radius) = raw.radius {
+                metrics.radius = radius;
+            }
+
+            if let Some(spacing) = raw.spacing {
+                metrics.spacing = spacing;
+            }
+
+            if let Some(border) = raw.border_width {
+                metrics.border_width = border;
+            }
+
+            if let Some(opacity) = raw.opacity {
+                metrics.opacity = opacity;
+            }
+        }
+
+        validate_typography(&typography)?;
+        validate_metrics(&metrics)?;
+
+        Ok(ResolvedTheme {
+            metadata,
+            values,
+            typography,
+            metrics,
+        })
     }
 }
 
@@ -497,6 +613,45 @@ fn theme_file(path: &Path) -> Result<PathBuf, ThemeLoadError> {
     }
 
     Err(ThemeLoadError::UnknownTheme(path.display().to_string()))
+}
+
+fn validate_typography(typography: &ThemeTypography) -> Result<(), ThemeLoadError> {
+    if typography.font_family.trim().is_empty() {
+        return Err(ThemeLoadError::InvalidMetadata(
+            "typography.font_family must not be empty".to_string(),
+        ));
+    }
+
+    if typography.mono_family.trim().is_empty() {
+        return Err(ThemeLoadError::InvalidMetadata(
+            "typography.mono_family must not be empty".to_string(),
+        ));
+    }
+
+    if !(6..=48).contains(&typography.font_size) {
+        return Err(ThemeLoadError::InvalidMetadata(format!(
+            "typography.font_size {} is out of range 6..=48",
+            typography.font_size
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_metrics(metrics: &ThemeMetrics) -> Result<(), ThemeLoadError> {
+    let valid = metrics.radius <= 32
+        && metrics.spacing <= 48
+        && metrics.border_width <= 8
+        && (20..=100).contains(&metrics.opacity);
+
+    if !valid {
+        return Err(ThemeLoadError::InvalidMetadata(format!(
+            "metrics out of range: radius {} (0..=32), spacing {} (0..=48), border_width {} (0..=8), opacity {} (20..=100)",
+            metrics.radius, metrics.spacing, metrics.border_width, metrics.opacity
+        )));
+    }
+
+    Ok(())
 }
 
 pub fn parse_color(value: &str) -> Result<Color, ThemeLoadError> {
@@ -911,6 +1066,99 @@ primary = "#123456"
         let result = Registry::new(vec![root.clone()]).load("directory");
 
         assert!(matches!(result, Err(ThemeLoadError::InvalidMetadata(_))));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn loads_typography_and_metrics_with_defaults() {
+        let root = scratch("design-tokens");
+
+        write_theme(
+            &root,
+            "plain",
+            &BASE_THEME.replace("id = \"base\"", "id = \"plain\""),
+        );
+
+        let designed = BASE_THEME.replace("id = \"base\"", "id = \"designed\"")
+            + "\n[typography]\nfont_family = \"Inter\"\nmono_family = \"Iosevka\"\nfont_size = 14\n\n[metrics]\nradius = 4\nspacing = 10\nborder_width = 3\nopacity = 90\n";
+
+        write_theme(&root, "designed", &designed);
+
+        let registry = Registry::new(vec![root.clone()]);
+        let plain = registry.load("plain").unwrap();
+        let designed = registry.load("designed").unwrap();
+
+        assert_eq!(plain.typography, ThemeTypography::default());
+        assert_eq!(plain.metrics, ThemeMetrics::default());
+
+        assert_eq!(designed.typography.mono_family, "Iosevka");
+        assert_eq!(designed.typography.font_size, 14);
+        assert_eq!(designed.metrics.radius, 4);
+        assert_eq!(designed.metrics.spacing, 10);
+        assert_eq!(designed.metrics.border_width, 3);
+        assert_eq!(designed.metrics.opacity, 90);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn inherits_typography_and_metrics_from_a_parent() {
+        let root = scratch("inherit-design");
+
+        write_theme(
+            &root,
+            "base",
+            &(BASE_THEME.to_string()
+                + "\n[typography]\nmono_family = \"Iosevka\"\nfont_size = 13\n\n[metrics]\nradius = 6\n"),
+        );
+        write_theme(
+            &root,
+            "child",
+            "[theme]\nname = \"Child\"\nid = \"child\"\nversion = \"1.0.0\"\ndescription = \"Child\"\nextends = \"base\"\n\n[metrics]\nspacing = 12\n",
+        );
+
+        let child = Registry::new(vec![root.clone()])
+            .load("child")
+            .expect("child should load");
+
+        assert_eq!(child.typography.mono_family, "Iosevka");
+        assert_eq!(child.typography.font_size, 13);
+        assert_eq!(child.metrics.radius, 6);
+        assert_eq!(child.metrics.spacing, 12);
+        assert_eq!(child.metrics.border_width, 2);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_out_of_range_design_tokens() {
+        let root = scratch("design-range");
+
+        write_theme(
+            &root,
+            "font",
+            &(BASE_THEME.to_string() + "\n[typography]\nfont_size = 100\n"),
+        );
+        write_theme(
+            &root,
+            "radius",
+            &(BASE_THEME
+                .replace("id = \"base\"", "id = \"radius\"")
+                .to_string()
+                + "\n[metrics]\nradius = 200\n"),
+        );
+
+        let registry = Registry::new(vec![root.clone()]);
+
+        assert!(matches!(
+            registry.load("font"),
+            Err(ThemeLoadError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            registry.load("radius"),
+            Err(ThemeLoadError::InvalidMetadata(_))
+        ));
 
         fs::remove_dir_all(root).unwrap();
     }

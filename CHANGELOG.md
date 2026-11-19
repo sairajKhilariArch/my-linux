@@ -5,6 +5,34 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-11-19
+
+### Added
+
+- Expanded theme schema: optional `[typography]` (`font_family`, `mono_family`,
+  `font_size`) and `[metrics]` (`radius`, `spacing`, `border_width`, `opacity`)
+  sections in `colors/palette.toml`, with defaults, parent inheritance and range
+  validation (font size 6–48, radius 0–32, spacing 0–48, border 0–8, opacity
+  20–100). Themes remain pure data and need no recompilation.
+- Integrations read the tokens instead of hard-coded values: Waybar (font family,
+  size, radius), Rofi (radius, spacing), Hyprland (rounding, border size, active
+  opacity), Kitty (font family, size, padding), Dunst (font, corner radius) and
+  Hyprlock (font family).
+- `my-linux-theme info` prints typography and metrics; theme import and export
+  preserve both sections, and a wallpaper-generated theme keeps the defaults.
+- GUI theme editor gained interface/monospace font, font size, corner radius and
+  spacing controls; saved themes round-trip all design tokens.
+- GUI application manager gained an Extensions section: discovery, detection,
+  applied state, enable/disable and removal of user extensions. The GUI applies
+  enabled extensions in the same transaction as the CLI.
+- Built-in Futuristic and Cyberpunk palettes now declare their design tokens.
+- 4 theme-engine tests for token loading, inheritance and range rejection, and a
+  GUI state test covering design-token round-trip and extension management.
+
+### Changed
+
+- Workspace version 0.18.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.17.0] - 2026-11-19
 
 ### Added

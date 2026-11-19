@@ -392,15 +392,12 @@ fn command_import(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Theme `{id}` already exists").into());
     }
 
-    let mut metadata = theme.metadata.clone();
-    metadata.id = id.clone();
+    let mut imported = theme.clone();
+    imported.metadata.id = id.clone();
 
     let path = theme_path(&id);
 
-    install_content(
-        render_from_parts(&metadata, &theme.colors).as_bytes(),
-        &path,
-    )?;
+    install_content(render_theme_toml(&imported).as_bytes(), &path)?;
 
     println!("Theme imported.");
     println!("Id:     {id}");
@@ -2408,6 +2405,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ] {
                 println!("  {:<12} {}", label, color.to_hex());
             }
+
+            let typography = &theme.typography;
+            let metrics = theme.metrics;
+
+            println!();
+            println!("Typography:");
+            println!("  interface    {}", typography.font_family);
+            println!("  monospace    {}", typography.mono_family);
+            println!("  size         {} px", typography.font_size);
+            println!();
+            println!("Metrics:");
+            println!("  radius       {} px", metrics.radius);
+            println!("  spacing      {} px", metrics.spacing);
+            println!("  border       {} px", metrics.border_width);
+            println!("  opacity      {} %", metrics.opacity);
         }
 
         "render" => {

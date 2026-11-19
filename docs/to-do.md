@@ -865,7 +865,8 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 - [x] Theme removal.
 - [x] Theme inheritance.
 - [x] Palette generation.
-- [ ] Theme profiles integration (belongs to Phase 7 profiles).
+- [x] Expanded schema: typography and geometry tokens (v0.18.0).
+- [x] Theme profiles integration (v0.13.0).
 
 **Status:** Complete (v0.8.0), except profile integration which is delivered with Phase 7.
 

@@ -63,7 +63,10 @@ pub fn render(theme: &LoadedTheme) -> String {
     output.push_str("    text = $TIME\n");
     output.push_str(&format!("    color = {}\n", rgba(colors.text, "ff")));
     output.push_str("    font_size = 72\n");
-    output.push_str("    font_family = JetBrainsMono Nerd Font\n");
+    output.push_str(&format!(
+        "    font_family = {}\n",
+        theme.typography.font_family
+    ));
     output.push_str("    position = 0, 160\n");
     output.push_str("    halign = center\n");
     output.push_str("    valign = center\n");
