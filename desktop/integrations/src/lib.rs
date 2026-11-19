@@ -5,7 +5,7 @@
 //! that is not installed simply never reads its generated file, and a reload
 //! is skipped instead of failing the whole desktop.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use theme_engine::LoadedTheme;
@@ -45,6 +45,13 @@ impl std::fmt::Display for RenderError {
 
 impl std::error::Error for RenderError {}
 
+/// Runtime state an integration may use while rendering.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RenderContext<'a> {
+    /// Active wallpaper, when one is configured and still exists.
+    pub wallpaper: Option<&'a Path>,
+}
+
 /// One desktop application that My Linux can configure.
 pub trait Integration: Sync {
     /// Stable identifier used by the CLI and the installed-state files.
@@ -61,6 +68,14 @@ pub trait Integration: Sync {
 
     /// Renders the application configuration for `theme`.
     fn render(&self, theme: &LoadedTheme) -> String;
+
+    /// Renders `theme` with runtime context such as the active wallpaper.
+    /// Integrations that do not use the context keep [`Integration::render`].
+    fn render_with_context(&self, theme: &LoadedTheme, context: RenderContext<'_>) -> String {
+        let _ = context;
+
+        self.render(theme)
+    }
 
     /// Rejects output that the application could not parse.
     fn validate(&self, content: &str) -> Result<(), RenderError>;

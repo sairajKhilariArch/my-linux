@@ -240,6 +240,12 @@ fn apply_profile_transaction(
 
     extra.extend(extensions.iter().cloned());
 
+    // Record the wallpaper before the transaction so the lock screen generated
+    // inside it already points at the profile's wallpaper.
+    if let Some(path) = &wallpaper {
+        WallpaperState::new(root).set(path, "profile")?;
+    }
+
     let report = apply_theme_with_extra(root, theme, &selected, &extra)?;
 
     let assets = AssetSettings {
@@ -255,19 +261,16 @@ fn apply_profile_transaction(
     let mut warnings = Vec::new();
     let mut wallpaper_commands = Vec::new();
 
-    if let Some(path) = &wallpaper {
-        WallpaperState::new(root).set(path, "profile")?;
-
-        if options.set_wallpaper {
-            match detect_tool() {
-                Some(tool) => match set_wallpaper(tool, path) {
-                    Ok(commands) => wallpaper_commands = commands,
-                    Err(error) => warnings.push(error.to_string()),
-                },
-                None => warnings.push(
-                    "No wallpaper daemon detected; the wallpaper was recorded only".to_string(),
-                ),
-            }
+    if let Some(path) = &wallpaper
+        && options.set_wallpaper
+    {
+        match detect_tool() {
+            Some(tool) => match set_wallpaper(tool, path) {
+                Ok(commands) => wallpaper_commands = commands,
+                Err(error) => warnings.push(error.to_string()),
+            },
+            None => warnings
+                .push("No wallpaper daemon detected; the wallpaper was recorded only".to_string()),
         }
     }
 
@@ -316,6 +319,40 @@ mod tests {
 
     fn theme(name: &str) -> LoadedTheme {
         crate::load_desktop_theme("../../themes", name).expect("theme should load")
+    }
+
+    #[test]
+    fn lock_screen_uses_the_profile_wallpaper() {
+        let dir = test_dir("wallpaper");
+        let image = dir.join("wallpaper.png");
+
+        fs::write(&image, b"not really a png").unwrap();
+
+        let mut profile = Profile::new("lock", "Lock", "cyberpunk").unwrap();
+
+        profile.metadata.integrations = vec!["hyprlock".to_string()];
+        profile.metadata.wallpaper = Some(image.display().to_string());
+        profile.validate().unwrap();
+
+        apply_profile_with_extensions(
+            &dir,
+            &profile,
+            &theme("cyberpunk"),
+            &ProfileApplyOptions {
+                set_wallpaper: false,
+                reload: false,
+            },
+            &[],
+        )
+        .unwrap();
+
+        let conf = fs::read_to_string(dir.join("hyprlock/hyprlock.conf")).unwrap();
+
+        assert!(conf.contains(&format!("path = {}", image.display())));
+        assert_eq!(
+            WallpaperState::new(&dir).current().as_deref(),
+            Some(image.as_path())
+        );
     }
 
     #[test]

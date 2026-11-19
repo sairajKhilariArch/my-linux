@@ -5,6 +5,31 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-11-19
+
+### Added
+
+- Lock screen wallpaper integration: integrations can render with runtime
+  context (`RenderContext { wallpaper }`), and Hyprlock now uses the active
+  wallpaper as its `background { path = … }` when one is recorded and still
+  exists. Without a wallpaper it keeps the themed background colour, so the
+  generated file stays valid either way.
+- Profile application records the profile's wallpaper before the theme
+  transaction, so switching a profile updates the lock screen in the same apply
+  instead of waiting for the next one.
+
+### Tests
+
+- Hyprlock renders the wallpaper path when given one and falls back to the
+  theme colour otherwise.
+- Theme application writes the active wallpaper into the lock screen config.
+- Profile application writes its wallpaper into the lock screen config and
+  records it in state.
+
+### Changed
+
+- Workspace version 0.24.0; `PKGBUILD` `pkgver` follows it.
+
 ## [0.23.0] - 2026-11-19
 
 ### Added

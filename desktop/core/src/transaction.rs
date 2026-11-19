@@ -199,14 +199,21 @@ pub fn format_timestamp(timestamp: u64) -> String {
 }
 
 fn prepare(
+    root: &Path,
     theme: &LoadedTheme,
     selected: &[&'static dyn Integration],
     extra: &[(String, String)],
 ) -> Result<Vec<Prepared>, ApplyError> {
     let mut prepared = Vec::new();
+    let wallpaper = desktop_assets::WallpaperState::new(root)
+        .current()
+        .filter(|path| path.is_file());
+    let context = desktop_integrations::RenderContext {
+        wallpaper: wallpaper.as_deref(),
+    };
 
     for integration in selected {
-        let content = integration.render(theme);
+        let content = integration.render_with_context(theme, context);
 
         integration.validate(&content).map_err(|error| {
             ApplyError::Validation(format!(
@@ -601,7 +608,7 @@ fn apply_transaction(
     fs::create_dir_all(root)?;
     recover_interrupted(root)?;
 
-    let prepared = prepare(theme, selected, extra)?;
+    let prepared = prepare(root, theme, selected, extra)?;
     let previous_theme = crate::read_active_theme(root);
 
     let created_backups = run_transaction(root, &prepared)?;
@@ -985,6 +992,25 @@ mod tests {
 
     fn theme(name: &str) -> LoadedTheme {
         crate::load_desktop_theme("../../themes", name).expect("theme should load")
+    }
+
+    #[test]
+    fn lock_screen_uses_the_active_wallpaper() {
+        let dir = test_dir("lock-wallpaper");
+        let image = dir.join("wallpaper.png");
+
+        fs::write(&image, b"not really a png").unwrap();
+        desktop_assets::WallpaperState::new(&dir)
+            .set(&image, "test")
+            .unwrap();
+
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+
+        let conf = fs::read_to_string(destination(&dir, "hyprlock/hyprlock.conf")).unwrap();
+
+        assert!(conf.contains(&format!("path = {}", image.display())));
+        assert!(conf.contains("background {"));
+        assert!(!conf.contains("color = rgba(0C0812ff)"));
     }
 
     #[test]
