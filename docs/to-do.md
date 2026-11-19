@@ -1,101 +1,166 @@
+# MY LINUX
+## Master Product Development Plan & Engineering Roadmap
 
-# My Linux Theme Manager
+**Project:** My Linux  
+**Repository:** https://github.com/sairajKhilariArch/my-linux  
+**Primary Platform:** Arch Linux  
+**Desktop Environment:** Hyprland / Wayland  
+**Core Language:** Rust  
+**Theme Definition:** TOML  
+**Initial Interface:** CLI  
+**Future Interface:** Native graphical desktop application  
+**Development Branch:** main  
+**Project Type:** Independent Linux Desktop Customization Platform
 
-## Project Vision, Master Specification & Engineering Roadmap
-
-**Project:** My Linux
-**Platform:** Arch Linux
-**Desktop Environment:** Hyprland (Wayland)
-**Primary Language:** Rust
-**Configuration Format:** TOML
-**Repository:** https://github.com/sairajKhilariArch/my-linux
-**Current Development Branch:** `main`
-**Project Status:** Active Development — Foundation and Initial Theme Installation
+**Status:** Core foundation implemented; application integration and platform development in progress.
 
 ---
 
-# 1. Project Vision
+# 1. PRODUCT VISION
 
-We are building an independent, Rust-powered Linux desktop customization and theme management system.
+We are building an independent Linux desktop customization platform that allows users to control the appearance, configuration and behavior of their Linux desktop from one central application.
 
-The goal is to create a system that allows users to customize their entire Linux desktop from one central theme engine.
+This is not supposed to be another collection of CSS themes.
 
-Instead of manually changing colors in different configuration files, users should be able to select one theme, and our system should automatically generate the correct configurations for supported desktop applications.
+It should become a complete desktop customization system that manages:
+
+- Desktop themes and color palettes.
+- Window manager appearance.
+- Status bars and application launchers.
+- Terminal appearance.
+- GTK and Qt application styling.
+- Wallpapers and dynamic colors.
+- Icons, cursors and fonts.
+- Notification styling.
+- Lock screen appearance.
+- Application configuration profiles.
+- Desktop layouts and presets.
+- Installation, backup and restoration.
+- Theme switching and application reloads.
+- User-created themes and extensions.
+
+The central concept:
+
+**One platform. One configuration system. One theme source of truth. Complete desktop customization.**
+
+A user should not need to manually edit ten different configuration files to customize their desktop.
 
 For example:
 
 ```bash
+my-linux-theme preview cyberpunk
 my-linux-theme apply cyberpunk
+my-linux-theme status
+my-linux-theme restore
 ```
 
-This command should eventually change the appearance of the supported desktop components to the Cyberpunk theme.
-
-The system should be:
-
-- Independent of HyDE.
-- Built primarily in Rust.
-- Modular and extensible.
-- Safe when modifying configuration files.
-- Portable across Arch Linux installations.
-- Easy to configure and use.
-- Capable of supporting multiple desktop applications.
-- Designed for future graphical user interface integration.
-
-**Our central idea: One theme, one palette, multiple applications.**
+Eventually, users should also be able to perform these operations through a graphical application.
 
 ---
 
-# 2. The Problem We Are Solving
+# 2. PRODUCT GOALS
 
-Linux desktop customization often involves multiple independent configuration files.
+## 2.1 Independence
 
-For example:
+The platform must operate independently of HyDE and other existing rice frameworks.
 
-| Application           | Configuration                     |
-| --------------------- | --------------------------------- |
-| Hyprland              | Hyprland configuration            |
-| Waybar                | CSS and JSONC                     |
-| Rofi                  | RASI                              |
-| GTK                   | GTK CSS and settings              |
-| Qt                    | Qt configuration                  |
-| Terminal              | Terminal color configuration      |
-| Notifications         | Notification daemon configuration |
-| Application launchers | Application-specific styling      |
+HyDE may remain installed during development, but our implementation must not depend on:
 
-If a user wants a Cyberpunk appearance, they might have to manually change colors in all these places.
+- HyDE theme management.
+- HyDE internal scripts.
+- HyDE-generated configuration logic.
+- HyDE-specific directories.
+- HyDE theme installation mechanisms.
 
-This creates several problems:
+We will build our own configuration management, rendering, theme management and application integration.
 
-1. The same color must be entered multiple times.
-2. Applications can end up with inconsistent colors.
-3. Changing themes becomes repetitive.
-4. Existing configurations can accidentally be overwritten.
-5. Restoring the original appearance can be difficult.
-6. Different applications use different configuration formats.
+The final system must be usable on a clean Arch Linux installation without HyDE.
 
-We want to solve these problems through a centralized theme management system.
+## 2.2 Complete desktop customization
+
+The project should eventually control the complete visual experience of a supported Linux desktop.
+
+This includes more than changing colors.
+
+It should manage application configurations, appearance, layouts, wallpapers, typography, icons, desktop behavior and user profiles.
+
+## 2.3 Safety
+
+The platform must never destroy a user's existing configuration without a recoverable backup.
+
+All installation operations should have:
+
+- Path validation.
+- Backup creation.
+- Atomic file replacement.
+- Error handling.
+- Installation verification.
+- Rollback.
+- Recovery after interrupted operations.
+
+## 2.4 Portability
+
+The application should be installable on other Arch Linux systems.
+
+We should eventually support:
+
+- Standard Arch Linux.
+- Arch Linux with Hyprland.
+- Clean installations without HyDE.
+- Other compatible Wayland environments where integrations permit.
+
+Additional distributions may be considered later.
+
+## 2.5 Performance
+
+The core engine should be lightweight.
+
+Rust should handle configuration loading, validation, rendering, installation and state management.
+
+The application should avoid unnecessary background processes and excessive resource usage.
 
 ---
 
-# 3. What We Are Building
+# 3. COMPLETE FEATURE SCOPE
 
-The system will contain several independent modules.
+The product will have the following major systems.
 
-## 3.1 Theme Engine
+## 3.1 Theme Management System
 
-This is the heart of the project.
+The theme engine is the central component.
 
-Its responsibility is to load, validate, manage and provide theme information.
+It must support:
 
-Themes will be stored in TOML files.
+- Built-in themes.
+- User-created themes.
+- Theme discovery.
+- Theme metadata.
+- Color palettes.
+- Theme validation.
+- Theme installation and removal.
+- Theme import and export.
+- Theme versioning.
+- Theme inheritance.
+- Theme preview.
+- Theme switching.
+- Theme profiles.
+
+Initial themes:
+
+1. Futuristic — Neon Horizon.
+2. Minimal.
+3. Cyberpunk.
+4. Nature.
+
+The palette should be the single source of truth.
 
 Example:
 
 ```toml
 [metadata]
 name = "Cyberpunk"
+version = "1.0.0"
 author = "My Linux"
-description = "Neon-inspired dark theme"
 
 [colors]
 background = "#0C0812"
@@ -111,149 +176,249 @@ warning = "#FFE14A"
 error = "#FF235A"
 ```
 
-The palette will be the single source of truth.
+The schema should eventually support additional properties:
 
-This means applications should receive their colors from the same theme instead of maintaining separate color definitions.
+- Typography.
+- Spacing.
+- Borders.
+- Corner radius.
+- Shadows.
+- Opacity.
+- Component states.
+- Application-specific overrides.
 
-### Initial themes
+A theme must be installable without modifying Rust source code.
 
-We currently have four themes:
+## 3.2 Desktop Application Integrations
 
-- Futuristic — Neon Horizon
-- Minimal
-- Cyberpunk
-- Nature
+Each supported application will have its own integration module.
 
-Future themes should be installable without changing the theme engine's core logic.
+### Priority 1 — Core Hyprland desktop
 
-## 3.2 Configuration Renderer
+| Component | Responsibilities |
+|---|---|
+| Hyprland | Window borders, active/inactive colors, decorations and supported settings |
+| Waybar | Bar background, modules, text, icons and states |
+| Rofi | Launcher, menus, dialogs and themes |
+| Kitty | Terminal colors, fonts and appearance |
+| Notifications | Notification styling |
+| Lock screen | Lock screen appearance |
 
-Different applications use different configuration formats.
+### Priority 2 — Application styling
 
-The renderer converts the centralized theme palette into application-specific configurations.
+| Component | Responsibilities |
+|---|---|
+| GTK | GTK application appearance |
+| Qt | Qt application styling |
+| File manager | Supported file manager configuration |
+| Browser | Supported browser appearance settings |
+| Shell | Zsh prompt and terminal environment |
+| Editor | Supported editor appearance configuration |
 
-Planned renderers:
+### Priority 3 — Additional integrations
 
-| Application         | Output                             |
-| ------------------- | ---------------------------------- |
-| Waybar              | CSS                                |
-| Rofi                | RASI                               |
-| Hyprland            | Configuration snippets             |
-| GTK                 | CSS/settings                       |
-| Qt                  | Supported Qt theme configuration   |
-| Kitty               | Terminal configuration             |
-| Notification daemon | Application-specific configuration |
+- Application launchers.
+- Widgets.
+- System monitors.
+- Screenshots and screen recording tools.
+- Clipboard managers.
+- Notification extensions.
+- Other Wayland applications.
 
-Each renderer should be independent.
+Each integration must be independently installable and testable.
 
-For example:
+The platform must detect when an application is unavailable rather than failing the entire theme installation.
 
-```text
-Cyberpunk palette
-       |
-       v
-   Theme Engine
-       |
-       +------> Waybar CSS
-       |
-       +------> Rofi RASI
-       |
-       +------> Hyprland config
-       |
-       +------> GTK styling
-       |
-       +------> Terminal colors
-```
+## 3.3 Wallpaper Management
 
-The renderer must generate valid configuration files without manually modifying the original theme palette.
+Wallpaper support should become a first-class feature.
 
-## 3.3 Configuration Manager
+Planned capabilities:
 
-This module is responsible for safely installing, backing up and restoring configuration files.
+- Wallpaper library.
+- Wallpaper preview.
+- Wallpaper selection.
+- Wallpaper installation.
+- Wallpaper switching.
+- Per-profile wallpapers.
+- Automatic wallpaper restoration.
+- Wallpaper-to-palette extraction.
+- Integration with supported wallpaper applications.
 
-Its main responsibilities:
+Future feature:
 
-- Validate paths.
-- Create backups.
-- Avoid overwriting existing backups.
-- Install generated configurations.
-- Restore previous configurations.
-- Handle file errors.
-- Prevent partially written configuration files.
-- Handle concurrent operations safely.
+A user selects a wallpaper, and My Linux generates a matching color palette.
 
-An important design decision is that configuration installation should use temporary files and atomic replacement wherever supported.
+The generated palette should be previewed and approved before being applied.
 
-We have already implemented the foundation of this module.
+## 3.4 Typography, Icons and Cursors
 
-## 3.4 Desktop Core
+The platform should manage:
 
-This module connects the theme engine and configuration manager.
+- Font families.
+- Font sizes.
+- Terminal fonts.
+- Interface typography.
+- Icon themes.
+- Cursor themes.
+- Cursor sizes.
+- Application-specific font overrides.
 
-Its responsibility is to coordinate operations.
+These settings should be part of a desktop profile rather than independent manual operations.
 
-For example:
+## 3.5 Desktop Layout and Presets
 
-```text
-User selects Cyberpunk
-          |
-          v
-      Desktop Core
-          |
-          v
-       Load Theme
-          |
-          v
-    Generate Waybar CSS
-          |
-          v
-    Create Backup
-          |
-          v
-    Install CSS
-```
+We should support complete desktop presets.
 
-The desktop core should eventually manage multiple application configurations through a common interface.
+Examples:
 
-## 3.5 Command-Line Interface
+**Cyberpunk Developer**
+- Dark neon palette.
+- Matching Waybar.
+- Matching Rofi.
+- Terminal styling.
+- Development-oriented layout.
+- Matching wallpaper.
 
-The CLI will be the primary interface during early development.
+**Minimal Workspace**
+- Clean colors.
+- Minimal bar.
+- Simple launcher.
+- Reduced visual clutter.
 
-The intended command structure is:
+**Nature**
+- Nature-inspired palette.
+- Matching wallpaper.
+- Green and earth-tone styling.
 
-```bash
-my-linux-theme list
-my-linux-theme preview cyberpunk
-my-linux-theme render cyberpunk
-my-linux-theme export cyberpunk
-my-linux-theme apply cyberpunk
-my-linux-theme restore
-my-linux-theme current
-my-linux-theme status
-```
+**Gaming**
+- Gaming-oriented appearance.
+- Suitable layouts.
+- Reduced visual distractions.
 
-The exact behavior of commands such as `current` and `status` will be implemented later.
+A preset should describe the desired desktop configuration and its dependencies.
 
-### Command responsibilities
+## 3.6 Configuration Management
 
-| Command     | Responsibility                           |
-| ----------- | ---------------------------------------- |
-| `list`    | Show available themes                    |
-| `preview` | Display theme colors                     |
-| `render`  | Generate configuration output            |
-| `export`  | Save generated files                     |
-| `apply`   | Install a theme                          |
-| `restore` | Restore previous configuration           |
-| `current` | Show active theme                        |
-| `status`  | Show installation and application status |
+This is one of the most important systems.
 
-The CLI should also provide useful error messages and help information.
+It must handle:
+
+- Configuration discovery.
+- Path validation.
+- Configuration templates.
+- File installation.
+- Backups.
+- Restoration.
+- Rollback.
+- File permissions.
+- Symbolic link handling.
+- Existing configuration detection.
+- Conflict resolution.
+- Installation history.
+- Interrupted operations.
+
+The system should never blindly overwrite the user's original files.
+
+For multiple application configurations, we should implement transaction-style application:
+
+1. Prepare every generated configuration.
+2. Validate all outputs.
+3. Create required backups.
+4. Install the configurations.
+5. Verify the results.
+6. Commit the new active state.
+7. Roll back if a required operation fails.
+
+A failed theme application should not leave half the desktop using one theme and half using another.
+
+## 3.7 Application Reload Management
+
+Generating configuration files does not automatically update running applications.
+
+We need a dedicated reload system.
+
+Examples:
+
+- Waybar: controlled restart.
+- Hyprland: supported reload mechanism.
+- Kitty: supported configuration reload.
+- Rofi: new configuration used on next launch.
+- GTK: application/session-specific handling.
+- Notifications: daemon-specific reload or restart.
+
+Reload handlers must be application-specific.
+
+The system must not restart unrelated desktop processes.
+
+Users should be able to choose whether to reload immediately or apply changes later where supported.
+
+## 3.8 Theme Profiles and Presets
+
+Users should be able to save multiple complete desktop configurations.
+
+Examples:
+
+- Development.
+- Gaming.
+- Work.
+- Minimal.
+- Night.
+- Custom.
+
+A profile should contain references to:
+
+- Theme.
+- Wallpaper.
+- Application configurations.
+- Fonts.
+- Icons.
+- Cursors.
+- Desktop layout.
+- Enabled integrations.
+
+Switching profiles should apply the complete configuration safely.
+
+## 3.9 User Theme Creation
+
+Users should be able to create custom themes without Rust programming knowledge.
+
+The future system should provide:
+
+- Theme templates.
+- TOML validation.
+- Color editor.
+- Preview.
+- Import/export.
+- Duplicate theme.
+- Theme metadata editing.
+- Application-specific overrides.
+
+The GUI should eventually include a visual theme editor.
+
+## 3.10 Plugin and Extension Architecture
+
+New integrations should be added without rewriting the entire application.
+
+For example, a developer should be able to add a new application renderer through a defined integration interface.
+
+The architecture should separate:
+
+- Theme data.
+- Application integration.
+- Configuration rendering.
+- Installation.
+- Reloading.
+
+Third-party extensions may be considered after the core architecture is stable.
 
 ---
 
-# 4. Project Architecture
+# 4. TECHNICAL ARCHITECTURE
 
-Our current Rust workspace is organized into separate packages.
+The project should follow a modular Rust workspace.
+
+Proposed architecture:
 
 ```text
 my-linux/
@@ -263,32 +428,26 @@ my-linux/
 ├── README.md
 │
 ├── desktop/
-│   │
 │   ├── core/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       └── render.rs
-│   │
 │   ├── theme-engine/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       └── loader.rs
-│   │
 │   ├── config-manager/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       └── lib.rs
-│   │
 │   ├── components/
-│   │   ├── Cargo.toml
-│   │   └── src/
+│   ├── integrations/
+│   │   ├── waybar/
+│   │   ├── rofi/
+│   │   ├── hyprland/
+│   │   ├── kitty/
+│   │   ├── gtk/
+│   │   ├── qt/
+│   │   ├── notifications/
+│   │   └── lockscreen/
 │   │
-│   └── cli/
-│       ├── Cargo.toml
-│       └── src/
-│           └── main.rs
+│   ├── wallpaper-manager/
+│   ├── profile-manager/
+│   ├── reload-manager/
+│   ├── state-manager/
+│   ├── cli/
+│   └── gui/
 │
 ├── themes/
 │   ├── futuristic/
@@ -296,432 +455,335 @@ my-linux/
 │   ├── cyberpunk/
 │   └── nature/
 │
+├── profiles/
 ├── configs/
-│   ├── waybar/
-│   └── rofi/
-│
+├── wallpapers/
 ├── packages/
-│
-├── docs/
 ├── scripts/
-└── system/
+├── system/
+├── docs/
+└── tests/
 ```
 
-### Responsibilities of each package
+This is the target architecture, not a requirement to create every directory immediately.
 
-**theme-engine**
+Existing modules should be retained and evolved rather than unnecessarily rewritten.
 
-Loads and validates theme definitions and converts colors into usable Rust values.
+## Module responsibilities
 
-**desktop-core**
+**Theme Engine**
 
-Coordinates theme loading, rendering and installation operations.
+Loads, validates and manages theme definitions.
 
-**config-manager**
+**Desktop Core**
 
-Handles safe file operations, backup, installation and restoration.
+Coordinates desktop customization operations.
 
-**components**
+**Config Manager**
 
-Will eventually contain reusable desktop components and shared integration logic.
+Handles safe file operations, installation and recovery.
 
-**cli**
+**Integrations**
 
-Provides the user-facing terminal commands.
+Provide application-specific rendering, installation and reload logic.
 
-**themes**
+**Wallpaper Manager**
 
-Contains all theme definitions and generated theme assets.
+Manages wallpaper assets and wallpaper integrations.
 
-**configs**
+**Profile Manager**
 
-Contains reference and application configuration templates.
+Manages complete desktop profiles and presets.
 
-**docs**
+**Reload Manager**
 
-Contains architecture documents, guides and development documentation.
+Controls application-specific reload operations.
+
+**State Manager**
+
+Stores active theme, profile and installation information.
+
+**CLI**
+
+Provides terminal access to all platform operations.
+
+**GUI**
+
+Provides a graphical interface using the same core functionality.
 
 ---
 
-# 5. Development Principles
+# 5. CONFIGURATION AND DATA DESIGN
 
-These rules will guide the entire project.
+We should separate application files, user data, generated configurations and state.
 
-## 5.1 Independence from HyDE
+Use the XDG directory standards where appropriate.
 
-HyDE must not be a dependency of our theme engine.
-
-We can continue using HyDE temporarily on the development desktop, but our application must own its own theme logic.
-
-We must not depend on:
+Proposed locations:
 
 ```text
-~/.local/lib/hyde
-~/.config/hyde
+~/.config/my-linux/
+    settings.toml
+    profiles/
+    integrations.toml
+
+~/.local/share/my-linux/
+    themes/
+    wallpapers/
+    generated/
+    templates/
+
+~/.local/state/my-linux/
+    active-theme.json
+    active-profile.json
+    installations/
+    history/
+    logs/
+
+~/.cache/my-linux/
+    previews/
+    temporary/
 ```
 
-We must also avoid blindly modifying generated HyDE configuration files.
+System-wide installation should use appropriate system locations and permissions.
 
-Our system should eventually work on a clean Arch Linux installation without HyDE.
+The exact directory structure must be finalized before implementing production installation.
 
-## 5.2 One source of truth
+Generated files must be distinguishable from user-edited files.
 
-The theme palette is the central source of color information.
-
-We should not hardcode different color palettes into individual renderers.
-
-## 5.3 Safe configuration management
-
-Never blindly overwrite user configurations.
-
-Before installation:
-
-1. Check the destination.
-2. Determine whether it already exists.
-3. Create a backup when necessary.
-4. Install atomically.
-5. Verify the operation.
-6. Preserve the original backup.
-
-The user should always have a recovery mechanism.
-
-## 5.4 Modular architecture
-
-Each application integration should be separate.
-
-If we add a new application, we should not have to rewrite the theme engine.
-
-## 5.5 Test before using real configurations
-
-All new installation and restoration functionality must first be tested inside a temporary project directory.
-
-Only after successful testing should we consider installing into actual desktop configuration directories.
+The application should preserve user changes and detect conflicts instead of silently replacing them.
 
 ---
 
-# 6. Current Development Progress
+# 6. COMMAND-LINE INTERFACE
 
-The following work has already been completed or verified during development.
+The CLI is the first complete user interface.
 
-## 6.1 Theme Engine — Implemented
+Planned commands:
 
-- TOML theme loading.
-- Theme metadata parsing.
-- Hexadecimal color parsing.
-- Invalid color validation.
-- Named theme loading.
-- Four theme definitions.
-- Theme color conversion to hexadecimal.
-
-## 6.2 Rendering — Initial Implementation
-
-- Waybar CSS renderer.
-- Generated CSS files.
-- Theme-based CSS color values.
-- Cyberpunk rendering tests.
-
-More application renderers are still required.
-
-## 6.3 Configuration Manager — Foundation Implemented
-
-- Path validation.
-- Backup creation.
-- Protection against overwriting existing backups.
-- Temporary-file-based installation.
-- Atomic replacement.
-- Direct content installation.
-- Concurrent backup protection.
-- Restoration using atomic installation.
-
-The restore function has been updated to read the backup and reuse `install_content()`.
-
-## 6.4 Desktop Core — Initial Implementation
-
-- Theme loading integration.
-- Waybar CSS generation.
-- Waybar installation.
-- Automatic original-file backup.
-
-## 6.5 CLI — Initial Implementation
-
-Currently implemented commands:
+## Theme commands
 
 ```bash
 my-linux-theme list
 my-linux-theme preview cyberpunk
-my-linux-theme render cyberpunk
+my-linux-theme info cyberpunk
+my-linux-theme create my-theme
+my-linux-theme import theme.zip
 my-linux-theme export cyberpunk
-my-linux-theme apply cyberpunk
+my-linux-theme remove my-theme
 ```
 
-The `apply` command currently installs into:
-
-```text
-target/theme-test/
-```
-
-It does not modify the actual Waybar configuration.
-
-The `restore` operation exists in the configuration manager, but the CLI `restore` command is still pending implementation and verification.
-
-## 6.6 Testing Results
-
-The latest complete workspace test run produced:
-
-| Package            | Tests passed |
-| ------------------ | -----------: |
-| config-manager     |            9 |
-| desktop-components |            1 |
-| desktop-core       |            4 |
-| theme-engine       |            9 |
-| CLI                |            0 |
-| **Total**    | **23** |
-
-**Latest result: 23 passed, 0 failed.**
-
-The Cyberpunk test installation was also verified manually.
-
-Generated file:
-
-```text
-target/theme-test/waybar.css
-```
-
-Backup:
-
-```text
-target/theme-test/backups/waybar.css.original
-```
-
-The generated CSS contained the expected Cyberpunk colors, and the backup contained:
-
-```css
-/* Original test Waybar configuration */
-```
-
----
-
-# 7. Engineering Roadmap
-
-We will develop the project in stages.
-
-## Phase 1 — Complete the foundation
-
-**Status: In progress**
-
-Tasks:
-
-- [X] Create Rust workspace.
-- [X] Implement theme engine.
-- [X] Load TOML palettes.
-- [X] Create four initial themes.
-- [X] Implement Waybar CSS renderer.
-- [X] Implement configuration backup.
-- [X] Implement safe installation.
-- [X] Add ANSI terminal color preview.
-- [X] Implement initial CLI.
-- [X] Implement atomic restoration function.
-- [X] Test the workspace.
-- [X] Test Cyberpunk installation in a temporary directory.
-- [ ] Add CLI `restore` command.
-- [ ] Verify restoration manually.
-- [ ] Test repeated theme applications.
-- [ ] Improve error handling and validation.
-- [ ] Add CLI integration tests.
-
-**Completion criteria:** The complete preview, render, export, apply and restore workflow must work without touching real desktop configurations.
-
-## Phase 2 — Build a proper theme system
-
-Tasks:
-
-- Improve palette validation.
-- Add theme discovery instead of hardcoded theme lists.
-- Support user-created themes.
-- Support theme installation and removal.
-- Support theme metadata and versioning.
-- Add theme inheritance if useful.
-- Add configuration schema validation.
-- Introduce theme state management.
-
-**Completion criteria:** Users can add, remove and manage themes without modifying Rust source code.
-
-## Phase 3 — Multiple application integrations
-
-We will add renderers in a controlled order.
-
-1. Waybar.
-2. Rofi.
-3. Hyprland.
-4. Kitty.
-5. GTK.
-6. Qt.
-7. Notification daemon.
-8. Additional applications.
-
-Each integration needs:
-
-- A renderer.
-- A configuration template where appropriate.
-- Installation support.
-- Backup support.
-- Restoration support.
-- Tests.
-
-**Completion criteria:** A single theme selection produces consistent configurations for all supported applications.
-
-## Phase 4 — Application lifecycle and reload management
-
-Generating configuration files is not enough.
-
-Applications may need to reload or restart before their new appearance becomes visible.
-
-We will implement application-specific reload handlers.
-
-Examples:
-
-| Application | Reload strategy                            |
-| ----------- | ------------------------------------------ |
-| Waybar      | Controlled restart                         |
-| Hyprland    | Supported reload mechanism                 |
-| Rofi        | Use generated configuration on next launch |
-| Kitty       | Supported configuration reload             |
-| GTK         | Application/session-specific handling      |
-
-We must avoid restarting unrelated desktop processes.
-
-**Completion criteria:** Applying a theme updates supported applications without requiring a complete desktop restart whenever possible.
-
-## Phase 5 — Theme state and recovery
-
-We need to know which theme is currently installed.
-
-Planned features:
-
-- Store active theme information.
-- Track generated configuration files.
-- Track backup locations.
-- Detect missing or modified configurations.
-- Provide status information.
-- Support rollback.
-- Handle interrupted installations.
-
-Possible future commands:
+## Application commands
 
 ```bash
+my-linux-theme render cyberpunk
+my-linux-theme apply cyberpunk
+my-linux-theme restore
 my-linux-theme current
 my-linux-theme status
-my-linux-theme rollback
 ```
 
-**Completion criteria:** The system can reliably identify its active theme and recover from failed operations.
+## Profile commands
 
-## Phase 6 — Graphical User Interface
+```bash
+my-linux-theme profile list
+my-linux-theme profile create development
+my-linux-theme profile apply development
+my-linux-theme profile export development
+```
 
-After the CLI and core engine are stable, we can build a graphical application.
+## Wallpaper commands
 
-Possible features:
+```bash
+my-linux-theme wallpaper list
+my-linux-theme wallpaper preview
+my-linux-theme wallpaper apply
+```
 
-- Theme gallery.
+## Recovery commands
+
+```bash
+my-linux-theme backup list
+my-linux-theme rollback
+my-linux-theme history
+my-linux-theme doctor
+```
+
+Commands should have predictable behavior, clear help output and useful error messages.
+
+We should implement only the commands backed by real functionality. Do not expose unfinished commands as if they work.
+
+---
+
+# 7. GRAPHICAL APPLICATION
+
+The graphical application is a major long-term goal.
+
+It must use the same Rust core rather than implementing a second theme engine.
+
+## Main interface
+
+The GUI should eventually include:
+
+### Dashboard
+
+- Active theme.
+- Active profile.
+- Wallpaper.
+- Supported application status.
+- Quick theme switching.
+- Recent activity.
+
+### Theme Gallery
+
+- Theme cards.
 - Color previews.
-- Live theme preview.
-- Theme selection.
-- Apply and restore buttons.
-- Application integration settings.
-- Backup management.
-- Light and dark interface.
-- Custom theme editor.
+- Theme details.
+- Apply and preview actions.
+- Installed themes.
 
-The GUI should communicate with the same Rust core.
+### Theme Editor
 
-We should not create a second independent theme engine for the GUI.
+- Color editing.
+- Typography.
+- Component styling.
+- Application overrides.
+- Live preview.
 
-**Completion criteria:** The user can manage the entire desktop theme through a graphical interface or the CLI.
+### Applications
 
-## Phase 7 — Packaging and Distribution
+- List supported applications.
+- Detect installed applications.
+- Enable or disable integrations.
+- Show configuration status.
+- Apply application-specific settings.
 
-We want the project to work on other Arch Linux systems.
+### Wallpapers
 
-Planned work:
+- Wallpaper gallery.
+- Preview.
+- Apply.
+- Extract palette.
 
-- Build release binaries.
-- Create an Arch package.
-- Prepare AUR packaging.
-- Create an installation script.
-- Manage application dependencies.
-- Support clean installation and upgrades.
-- Provide uninstall and recovery functionality.
-- Document supported desktop environments.
+### Profiles
 
-**Completion criteria:** Another Arch Linux user can install and use the project without manually building its internal modules.
+- Create profiles.
+- Save desktop configurations.
+- Switch profiles.
+- Import/export profiles.
 
----
+### Recovery
 
-# 8. Future Features
+- Backup history.
+- Restore.
+- Rollback.
+- Configuration conflict detection.
 
-These are longer-term possibilities, not current commitments.
+The GUI should be lightweight and consistent with the desktop's visual design.
 
-### Theme marketplace or community repository
-
-Allow users to share custom themes.
-
-### Wallpaper integration
-
-Automatically synchronize theme palettes with selected wallpapers.
-
-### Dynamic color extraction
-
-Extract colors from an image and generate a compatible desktop palette.
-
-### Theme profiles
-
-Allow users to maintain different configurations for different situations.
-
-Examples:
-
-- Work
-- Gaming
-- Development
-- Minimal
-- Night mode
-
-### Plugin architecture
-
-Allow new application integrations to be added independently.
-
-### Cross-desktop support
-
-Potentially support other Wayland desktop environments and window managers in the future.
+The technology choice should be finalized after the Rust core and CLI stabilize.
 
 ---
 
-# 9. Testing and Quality Requirements
+# 8. INSTALLATION AND DISTRIBUTION
 
-Every major feature must have tests.
+The final platform should be easy to install on another Arch Linux system.
 
-Our testing strategy should include:
+Planned distribution:
 
-**Unit tests**
+1. Development build.
+2. Release binary.
+3. Arch Linux package.
+4. PKGBUILD.
+5. AUR package.
+6. Installation script.
+7. Upgrade mechanism.
+8. Uninstallation and recovery.
 
-Test individual functions such as color parsing, TOML loading, CSS rendering and path validation.
+The installer should:
 
-**Integration tests**
+- Detect dependencies.
+- Detect supported desktop components.
+- Avoid overwriting existing files.
+- Set up application directories.
+- Install built-in themes.
+- Provide a clean uninstall process.
 
-Test complete operations such as loading a theme, rendering CSS and installing the output.
+Updates must preserve user-created themes, profiles and settings.
 
-**Failure tests**
+---
 
-Test missing files, invalid palettes, permission errors, existing backups and failed installation.
+# 9. SECURITY AND RELIABILITY
 
-**Recovery tests**
+Safety must be built into the architecture.
 
-Test restoration after installation and failure scenarios.
+Required safeguards:
 
-**Platform tests**
+- Validate all user-supplied paths.
+- Handle symbolic links safely.
+- Avoid unsafe shell execution.
+- Use atomic file operations where supported.
+- Preserve permissions when required.
+- Never silently replace original backups.
+- Validate generated configurations.
+- Keep an installation journal.
+- Support recovery after interruption.
+- Handle permission errors clearly.
+- Verify application reload results.
+- Prevent partial multi-application installations.
 
-Verify behavior on supported Linux filesystems and desktop configurations.
+The system should not require root privileges for normal per-user desktop customization.
 
-We should also run:
+Use elevated privileges only for operations that genuinely require them.
+
+---
+
+# 10. TESTING STRATEGY
+
+Every module needs unit and integration tests.
+
+## Theme engine
+
+- Valid TOML.
+- Invalid TOML.
+- Valid colors.
+- Invalid colors.
+- Unknown themes.
+- Missing metadata.
+- Custom themes.
+
+## Configuration manager
+
+- Backup creation.
+- Backup collision.
+- Installation.
+- Atomic replacement.
+- Restoration.
+- Missing files.
+- Permissions.
+- Symbolic links.
+- Interrupted operations.
+- Concurrent operations.
+
+## Application integrations
+
+- Valid generated CSS.
+- Valid RASI.
+- Valid Hyprland snippets.
+- Application-specific validation.
+- Missing applications.
+- Reload failures.
+
+## Full platform
+
+- Apply a complete theme.
+- Restore the original configuration.
+- Switch between themes.
+- Switch between profiles.
+- Recover from failed installation.
+- Preserve user changes.
+
+Required quality checks:
 
 ```bash
 cargo fmt --all
@@ -730,118 +792,276 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-before major releases.
+No phase should be considered complete merely because the code compiles.
+
+Each phase needs its own acceptance tests.
 
 ---
 
-# 10. Security and Safety Requirements
+# 11. UPDATED DEVELOPMENT ROADMAP
 
-This project modifies desktop configuration files, so safety is a core requirement.
+The roadmap is ordered by dependencies. We should not start the GUI or package distribution before the core system is reliable.
 
-The implementation must:
+## Phase 1 — Finish the current foundation
 
-- Never use arbitrary shell commands for simple file operations.
-- Validate paths before modifying files.
-- Avoid following unexpected symbolic links where security matters.
-- Never overwrite a user's original backup silently.
-- Avoid modifying HyDE internals.
-- Use atomic writes where supported.
-- Preserve file permissions where required.
-- Provide understandable error messages.
-- Keep a recovery path.
-- Never apply untested configurations automatically.
+**Current phase: In progress**
 
-We must also consider rollback when an installation modifies several application configurations and one operation fails.
+- [x] Rust workspace.
+- [x] Theme engine.
+- [x] TOML palette loading.
+- [x] Four initial themes.
+- [x] Waybar CSS renderer.
+- [x] ANSI color preview.
+- [x] CLI list, preview, render and export.
+- [x] Configuration backup.
+- [x] Safe content installation.
+- [x] Atomic restoration function.
+- [x] Desktop Core integration.
+- [x] Initial test installation.
+- [x] 23 workspace tests passing.
+- [x] Cyberpunk test installation verified.
+- [ ] Add CLI restore command.
+- [ ] Verify restoration manually.
+- [ ] Test repeated apply operations.
+- [ ] Add CLI integration tests.
+- [ ] Add installation failure tests.
+- [ ] Improve configuration path and permission handling.
 
-A future multi-application installation should ideally behave like a transaction: either all required changes succeed, or the system restores the previous state.
+**Acceptance:** The complete CLI workflow must work inside a test directory without modifying the real desktop.
+
+## Phase 2 — Production-ready configuration management
+
+- [ ] Define configuration destination mapping.
+- [ ] Design backup naming and retention.
+- [ ] Preserve file permissions.
+- [ ] Handle symlinks safely.
+- [ ] Detect user modifications.
+- [ ] Add installation journal.
+- [ ] Implement transaction-style application.
+- [ ] Implement rollback after failure.
+- [ ] Add recovery and diagnostic commands.
+
+**Acceptance:** The system can safely install, restore and recover multiple configurations.
+
+## Phase 3 — Complete theme engine
+
+- [ ] Dynamic theme discovery.
+- [ ] Theme schema versioning.
+- [ ] Theme metadata validation.
+- [ ] User theme directory.
+- [ ] Custom theme creation.
+- [ ] Import and export.
+- [ ] Theme removal.
+- [ ] Theme inheritance.
+- [ ] Palette generation.
+- [ ] Theme profiles integration.
+
+**Acceptance:** New themes can be added and managed without changing the Rust source code.
+
+## Phase 4 — Complete core Hyprland integrations
+
+Implementation order:
+
+1. Waybar.
+2. Rofi.
+3. Hyprland.
+4. Kitty.
+5. Notifications.
+6. Lock screen.
+
+For each integration:
+
+- [ ] Configuration template.
+- [ ] Renderer.
+- [ ] Output validation.
+- [ ] Safe installation.
+- [ ] Backup.
+- [ ] Restore.
+- [ ] Reload handler.
+- [ ] Integration tests.
+
+**Acceptance:** One theme applies consistently across the core desktop.
+
+## Phase 5 — Extended application integrations
+
+- [ ] GTK.
+- [ ] Qt.
+- [ ] File manager.
+- [ ] Browser styling where supported.
+- [ ] Zsh.
+- [ ] Editor integrations.
+- [ ] System monitors.
+- [ ] Additional applications.
+
+**Acceptance:** Users can enable individual application integrations without requiring every application to be installed.
+
+## Phase 6 — Wallpapers and desktop assets
+
+- [ ] Wallpaper manager.
+- [ ] Wallpaper library.
+- [ ] Wallpaper preview.
+- [ ] Wallpaper profiles.
+- [ ] Palette extraction.
+- [ ] Font management.
+- [ ] Icon themes.
+- [ ] Cursor themes.
+- [ ] Asset validation.
+
+**Acceptance:** A desktop profile can control colors and associated visual assets.
+
+## Phase 7 — Profiles and complete desktop presets
+
+- [ ] Profile schema.
+- [ ] Profile creation.
+- [ ] Profile discovery.
+- [ ] Profile switching.
+- [ ] Profile import/export.
+- [ ] Development preset.
+- [ ] Gaming preset.
+- [ ] Minimal preset.
+- [ ] Custom presets.
+- [ ] Profile rollback.
+
+**Acceptance:** Users can switch complete desktop configurations with one command.
+
+## Phase 8 — State, monitoring and diagnostics
+
+- [ ] Active theme tracking.
+- [ ] Active profile tracking.
+- [ ] Application integration status.
+- [ ] Configuration modification detection.
+- [ ] Installation history.
+- [ ] Backup history.
+- [ ] System diagnostics.
+- [ ] `doctor` command.
+- [ ] Structured logging.
+
+**Acceptance:** The application knows what is installed, what is active and what needs attention.
+
+## Phase 9 — Graphical user interface
+
+- [ ] GUI architecture.
+- [ ] Dashboard.
+- [ ] Theme gallery.
+- [ ] Theme preview.
+- [ ] Theme editor.
+- [ ] Application manager.
+- [ ] Wallpaper manager.
+- [ ] Profile manager.
+- [ ] Backup and recovery UI.
+- [ ] Settings.
+- [ ] Light and dark interface.
+
+**Acceptance:** The full platform can be operated without using the terminal.
+
+## Phase 10 — Packaging and release
+
+- [ ] Release builds.
+- [ ] Arch PKGBUILD.
+- [ ] AUR packaging.
+- [ ] Installer.
+- [ ] Dependency detection.
+- [ ] Upgrade handling.
+- [ ] Uninstaller.
+- [ ] Documentation.
+- [ ] Screenshots and demonstrations.
+- [ ] Release testing.
+
+**Acceptance:** Another Arch Linux user can install, configure, update and uninstall the platform safely.
+
+## Phase 11 — Advanced ecosystem
+
+Long-term features:
+
+- Community theme repository.
+- Theme marketplace.
+- Plugin ecosystem.
+- Dynamic wallpaper palettes.
+- Automatic theme generation.
+- More desktop environment support.
+- Advanced desktop layouts.
+- Additional distribution support.
+
+These features must not delay completion of the core platform.
 
 ---
 
-# 11. Immediate Development Plan
+# 12. IMMEDIATE NEXT DEVELOPMENT TASKS
 
-Our next development tasks are:
+Our actual next tasks are deliberately smaller than the entire roadmap.
 
-| Order | Task                                  | Status  |
-| ----- | ------------------------------------- | ------- |
-| 1     | Implement CLI restore command         | Pending |
-| 2     | Test restoration of original CSS      | Pending |
-| 3     | Test repeated theme applications      | Pending |
-| 4     | Add CLI integration tests             | Pending |
-| 5     | Implement theme discovery             | Pending |
-| 6     | Improve configuration manager         | Pending |
-| 7     | Add Rofi renderer                     | Pending |
-| 8     | Add Hyprland renderer                 | Pending |
-| 9     | Add active-theme state                | Pending |
-| 10    | Implement application reload handlers | Pending |
+1. Add the CLI `restore` command.
+2. Verify the original test CSS is restored.
+3. Test applying Cyberpunk repeatedly.
+4. Test switching from Cyberpunk to Nature.
+5. Verify that the first original backup is preserved.
+6. Add automated CLI integration tests.
+7. Improve backup and installation edge cases.
+8. Finalize the configuration manager API.
+9. Build the first complete Waybar integration.
+10. Start the Rofi renderer.
 
-We should complete each task and verify it before moving to the next one.
+We must complete these tasks before moving to real desktop installation.
 
 ---
 
-# 12. Definition of the Finished Project
+# 13. PROJECT COMPLETION CRITERIA
 
-The long-term goal is a complete desktop theme management system.
+The project is considered mature when a new Arch Linux user can:
 
-A user should be able to install the project and run:
+1. Install My Linux.
+2. Discover available themes.
+3. Preview themes.
+4. Create custom themes.
+5. Manage desktop applications.
+6. Apply a complete theme.
+7. Customize wallpapers, fonts, icons and cursors.
+8. Create desktop profiles.
+9. Switch between profiles.
+10. Reload supported applications.
+11. See the active configuration status.
+12. Back up and restore configurations.
+13. Recover from failed operations.
+14. Update the platform without losing personal data.
+15. Use either the CLI or GUI.
 
-```bash
-my-linux-theme list
-```
-
-Choose a theme:
-
-```bash
-my-linux-theme preview cyberpunk
-```
-
-Apply it:
-
-```bash
-my-linux-theme apply cyberpunk
-```
-
-Check the result:
-
-```bash
-my-linux-theme status
-```
-
-Restore the previous configuration:
-
-```bash
-my-linux-theme restore
-```
-
-Behind the scenes, the application should manage all supported application configurations, backups, installation, state and reload operations.
-
-The user should not need to manually edit multiple CSS, RASI, TOML or Hyprland configuration files.
+All of this must work independently of HyDE.
 
 ---
 
-# 13. Final Project Direction
+# 14. NON-NEGOTIABLE DEVELOPMENT RULES
 
-We are not simply creating a collection of Linux themes.
+1. Build functionality, not just documentation.
+2. Do not rewrite working modules without a technical reason.
+3. Inspect existing code before modifying it.
+4. Preserve existing project history and assets.
+5. Do not modify HyDE internals.
+6. Test installation in isolated directories first.
+7. Never overwrite user backups silently.
+8. Keep the Rust workspace modular.
+9. Avoid unnecessary dependencies.
+10. Implement one complete feature at a time.
+11. Add tests for every important operation.
+12. Update progress based on actual implementation, not assumptions.
+13. Do not claim features are complete before verifying them.
+14. Keep the project usable from the CLI even after the GUI is introduced.
 
-We are creating a modular Linux desktop customization platform.
+---
 
-Rust will provide the core engine, configuration management, safety and application integration.
+# 15. FINAL PRODUCT DIRECTION
 
-TOML will provide readable theme definitions.
+My Linux should evolve into an independent Linux desktop customization platform, not remain a simple theme switcher.
 
-The CLI will provide the first interface.
+The Rust core will manage themes, configurations, profiles, installations and recovery.
 
-A graphical application can be built on top of the same core later.
+The application integrations will translate central theme data into the configuration formats used by the desktop.
 
-Our most important priorities are:
+The CLI will provide complete control first.
 
-1. Correct architecture.
-2. Safe configuration management.
-3. Reliable theme generation.
-4. Independent application integrations.
-5. Recovery and rollback.
-6. Portability.
-7. A polished user experience.
+The graphical interface will eventually make the platform accessible to users who do not want to use terminal commands.
 
-**Development philosophy: Build the foundation correctly, test every operation in isolation, and only then connect it to the real desktop.**
+The system should be modular enough to grow, safe enough to manage real desktop configurations and portable enough to work on other Arch Linux installations.
 
-The current development environment must remain safe. HyDE should not be modified or removed until our independent theme management system is sufficiently complete and tested.
+**Our ultimate goal: Build our own independent Arch Linux desktop customization ecosystem, with complete control over the desktop appearance and configuration.**
+
+The first priority remains finishing and hardening the existing foundation. We will expand only after each layer is tested and reliable.
