@@ -6,9 +6,10 @@ members = [
     "desktop/theme-engine",
     "desktop/components",
     "desktop/config-manager",
+    "desktop/integrations",
     "desktop/cli",
 ]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"

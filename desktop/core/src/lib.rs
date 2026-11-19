@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use config_manager::{ConfigError, backup_file, install_content};
 
 pub use config_manager;
+pub use desktop_integrations as integrations;
+pub use desktop_integrations::{Integration, IntegrationStatus};
 pub use theme_engine::{
     BrokenTheme, Color, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError,
     ThemeLocation, ThemeMetadata, ThemeSource, ThemeSummary, generate_palette, render_from_parts,

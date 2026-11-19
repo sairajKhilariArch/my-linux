@@ -5,6 +5,38 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-19
+
+### Added
+
+- `desktop-integrations` crate with an `Integration` trait covering id, name,
+  destination path, application detection, rendering, output validation and
+  reload commands.
+- Waybar integration: complete CSS with bar, workspace, module, tooltip, menu
+  and urgency styling derived from the theme palette.
+- Rofi integration: RASI theme with window, input bar, list view, element and
+  selection states.
+- Hyprland integration: a dedicated snippet with active/inactive borders,
+  rounding, shadow, blur and background colour. The user's `hyprland.conf` is
+  never touched; the snippet is meant to be sourced from it.
+- Kitty integration: terminal colours, 16-colour palette, selection, cursor,
+  tab colours and font settings.
+- Notifications (Dunst) integration: global style plus low, normal and critical
+  urgency sections.
+- Lock screen (Hyprlock) integration: background, clock labels and input field.
+- Integration detection through `PATH`, a status report per integration, and
+  per-integration reload commands that are only executed when the application
+  is present and a reload is explicitly requested.
+- Multi-file transaction: `apply` now installs every integration in one
+  transaction and `restore`/`rollback` handle all generated files.
+
+### Fixed
+
+- A generated configuration can no longer be mistaken for a user original on a
+  second apply: files recorded as installed are never backed up as originals.
+- `restore` removes generated files that never replaced a user file instead of
+  failing, and refuses to delete a file the user edited by hand.
+
 ## [0.8.0] - 2026-11-19
 
 ### Added

@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 theme-engine = { path = "../theme-engine" }
 config-manager = { path = "../config-manager" }
+desktop-integrations = { path = "../integrations" }

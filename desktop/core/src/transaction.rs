@@ -2,11 +2,11 @@
 //!
 //! Every operation follows the same sequence:
 //!
-//! 1. generate the configuration content,
-//! 2. validate it,
+//! 1. render every selected integration,
+//! 2. validate the generated files,
 //! 3. write an installation journal,
 //! 4. back up the original (once) and snapshot the current state,
-//! 5. install every file atomically,
+//! 5. install (or remove) every file atomically,
 //! 6. commit the new state, or roll everything back on failure.
 //!
 //! The journal makes an interrupted operation recoverable: the next command
@@ -21,9 +21,8 @@ use config_manager::{
     ConfigError, backup_file, digest, install_content, install_file, remove_file_if_exists,
     snapshot_file,
 };
-use theme_engine::loader::LoadedTheme;
-
-use crate::render::render_waybar_css;
+use desktop_integrations::Integration;
+use theme_engine::LoadedTheme;
 
 /// Path of the generated Waybar configuration, relative to the installation root.
 pub const WAYBAR_RELATIVE_PATH: &str = "waybar.css";
@@ -41,9 +40,7 @@ impl std::fmt::Display for ApplyError {
         match self {
             ApplyError::Config(error) => write!(f, "{error}"),
             ApplyError::Io(error) => write!(f, "I/O error: {error}"),
-            ApplyError::Validation(error) => {
-                write!(f, "Generated configuration is invalid: {error}")
-            }
+            ApplyError::Validation(error) => write!(f, "{error}"),
             ApplyError::RollbackIncomplete(error) => write!(
                 f,
                 "The operation failed and the rollback did not complete: {error}. Run `my-linux-theme doctor`."
@@ -118,9 +115,11 @@ pub struct Diagnostic {
     pub ok: bool,
 }
 
+#[derive(Debug)]
 struct Prepared {
     relative_path: String,
-    content: Vec<u8>,
+    /// `None` removes the generated file (a file that had no original).
+    content: Option<Vec<u8>>,
 }
 
 /// Destination of a generated configuration inside the installation root.
@@ -197,29 +196,35 @@ pub fn format_timestamp(timestamp: u64) -> String {
     )
 }
 
-fn validate(relative_path: &str, content: &str) -> Result<(), ApplyError> {
-    if content.trim().is_empty() {
-        return Err(ApplyError::Validation(format!("{relative_path} is empty")));
+fn prepare(
+    theme: &LoadedTheme,
+    selected: &[&'static dyn Integration],
+) -> Result<Vec<Prepared>, ApplyError> {
+    let mut prepared = Vec::new();
+
+    for integration in selected {
+        let content = integration.render(theme);
+
+        integration.validate(&content).map_err(|error| {
+            ApplyError::Validation(format!(
+                "Generated {} configuration is invalid: {error}",
+                integration.id()
+            ))
+        })?;
+
+        prepared.push(Prepared {
+            relative_path: integration.relative_path().to_string(),
+            content: Some(content.into_bytes()),
+        });
     }
 
-    if relative_path.ends_with(".css") && !content.contains("@define-color") {
-        return Err(ApplyError::Validation(format!(
-            "{relative_path} does not define any colours"
-        )));
+    if prepared.is_empty() {
+        return Err(ApplyError::Validation(
+            "No integrations were selected".to_string(),
+        ));
     }
 
-    Ok(())
-}
-
-fn prepare(theme: &LoadedTheme) -> Result<Vec<Prepared>, ApplyError> {
-    let css = render_waybar_css(theme);
-
-    validate(WAYBAR_RELATIVE_PATH, &css)?;
-
-    Ok(vec![Prepared {
-        relative_path: WAYBAR_RELATIVE_PATH.to_string(),
-        content: css.into_bytes(),
-    }])
+    Ok(prepared)
 }
 
 fn write_journal(root: &Path, entries: &[(String, bool)]) -> Result<(), ConfigError> {
@@ -307,13 +312,20 @@ fn run_transaction(root: &Path, prepared: &[Prepared]) -> Result<Vec<String>, Ap
 
     let mut created_backups = Vec::new();
 
+    // Files we installed ourselves are not user originals, so a later apply
+    // must never turn a generated configuration into an "original" backup.
+    let ours: Vec<String> = installed_entries(root)
+        .into_iter()
+        .map(|entry| entry.relative_path)
+        .collect();
+
     let outcome = (|| -> Result<(), ApplyError> {
         for file in prepared {
             let target = destination(root, &file.relative_path);
             let original = original_backup(root, &file.relative_path);
 
             if target.exists() {
-                if !original.exists() {
+                if !original.exists() && !ours.contains(&file.relative_path) {
                     backup_file(&target, &original)?;
                     created_backups.push(original.display().to_string());
                 }
@@ -321,7 +333,10 @@ fn run_transaction(root: &Path, prepared: &[Prepared]) -> Result<Vec<String>, Ap
                 snapshot_file(&target, previous_backup(root, &file.relative_path))?;
             }
 
-            install_content(&file.content, &target)?;
+            match &file.content {
+                Some(content) => install_content(content, &target)?,
+                None => remove_file_if_exists(&target)?,
+            }
         }
 
         Ok(())
@@ -351,9 +366,13 @@ fn write_installed(root: &Path, prepared: &[Prepared]) -> Result<(), ConfigError
     let mut content = String::new();
 
     for file in prepared {
+        let Some(bytes) = &file.content else {
+            continue;
+        };
+
         content.push_str(&file.relative_path);
         content.push('\t');
-        content.push_str(&digest(&file.content));
+        content.push_str(&digest(bytes));
         content.push('\n');
     }
 
@@ -470,14 +489,55 @@ fn relatives_to_restore(root: &Path) -> Vec<String> {
     }
 }
 
-/// Applies a theme as a single transaction.
+/// Refuses to delete a generated file that the user changed and that has no
+/// original backup to restore.
+fn guard_local_changes(root: &Path, relative_path: &str) -> Result<(), ApplyError> {
+    let target = destination(root, relative_path);
+
+    if !target.exists() {
+        return Ok(());
+    }
+
+    let recorded = installed_entries(root)
+        .into_iter()
+        .find(|entry| entry.relative_path == relative_path);
+
+    let Some(entry) = recorded else {
+        return Err(ApplyError::Validation(format!(
+            "{} has no original backup and no recorded state; refusing to remove it",
+            target.display()
+        )));
+    };
+
+    let current = fs::read(&target)?;
+
+    if digest(&current) != entry.digest {
+        return Err(ApplyError::Validation(format!(
+            "{} has been modified by you and has no original backup; refusing to remove it",
+            target.display()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Applies a theme to every integration as a single transaction.
 pub fn apply_theme(root: impl AsRef<Path>, theme: &LoadedTheme) -> Result<ApplyReport, ApplyError> {
+    apply_theme_with(root, theme, desktop_integrations::all())
+}
+
+/// Applies a theme to the selected integrations as a single transaction.
+pub fn apply_theme_with(
+    root: impl AsRef<Path>,
+    theme: &LoadedTheme,
+    selected: &[&'static dyn Integration],
+) -> Result<ApplyReport, ApplyError> {
     let root = root.as_ref();
 
     fs::create_dir_all(root)?;
     recover_interrupted(root)?;
 
-    let prepared = prepare(theme)?;
+    let prepared = prepare(theme, selected)?;
     let previous_theme = crate::read_active_theme(root);
 
     let created_backups = run_transaction(root, &prepared)?;
@@ -508,6 +568,9 @@ pub fn apply_theme(root: impl AsRef<Path>, theme: &LoadedTheme) -> Result<ApplyR
 }
 
 /// Restores every installed configuration from its original backup.
+///
+/// A generated file that never displaced a user file (no original backup) is
+/// removed instead, but only when it is still unmodified.
 pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> {
     let root = root.as_ref();
 
@@ -519,14 +582,29 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
     for relative_path in &relatives {
         let original = original_backup(root, relative_path);
 
-        if !original.exists() {
-            return Err(ApplyError::Config(ConfigError::MissingBackup(original)));
-        }
+        if original.exists() {
+            prepared.push(Prepared {
+                relative_path: relative_path.clone(),
+                content: Some(fs::read(&original)?),
+            });
+        } else {
+            guard_local_changes(root, relative_path)?;
 
-        prepared.push(Prepared {
-            relative_path: relative_path.clone(),
-            content: fs::read(&original)?,
-        });
+            prepared.push(Prepared {
+                relative_path: relative_path.clone(),
+                content: None,
+            });
+        }
+    }
+
+    let nothing_to_restore = prepared
+        .iter()
+        .all(|file| file.content.is_none() && !destination(root, &file.relative_path).exists());
+
+    if nothing_to_restore {
+        return Err(ApplyError::Validation(
+            "Nothing to restore: no original backup and no generated configuration".to_string(),
+        ));
     }
 
     run_transaction(root, &prepared)?;
@@ -534,6 +612,11 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
     remove_file_if_exists(installed_file(root))?;
     crate::clear_active_theme(root)?;
     remove_file_if_exists(previous_theme_file(root))?;
+
+    // The original state is now live, so the rollback snapshots are obsolete.
+    for relative_path in &relatives {
+        remove_file_if_exists(previous_backup(root, relative_path))?;
+    }
 
     append_history(root, "restore", "-", &relatives)?;
 
@@ -554,14 +637,29 @@ pub fn rollback_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError>
     for relative_path in &relatives {
         let previous = previous_backup(root, relative_path);
 
-        if !previous.exists() {
-            return Err(ApplyError::Config(ConfigError::MissingBackup(previous)));
-        }
+        if previous.exists() {
+            prepared.push(Prepared {
+                relative_path: relative_path.clone(),
+                content: Some(fs::read(&previous)?),
+            });
+        } else {
+            guard_local_changes(root, relative_path)?;
 
-        prepared.push(Prepared {
-            relative_path: relative_path.clone(),
-            content: fs::read(&previous)?,
-        });
+            prepared.push(Prepared {
+                relative_path: relative_path.clone(),
+                content: None,
+            });
+        }
+    }
+
+    let nothing_to_do = prepared
+        .iter()
+        .all(|file| file.content.is_none() && !destination(root, &file.relative_path).exists());
+
+    if nothing_to_do {
+        return Err(ApplyError::Validation(
+            "Nothing to roll back: no previous state is recorded".to_string(),
+        ));
     }
 
     run_transaction(root, &prepared)?;
@@ -576,8 +674,6 @@ pub fn rollback_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError>
         None => crate::clear_active_theme(root)?,
     }
 
-    // The restored files are the new installed state, so modification
-    // detection keeps working after a rollback.
     write_installed(root, &prepared)?;
     remove_file_if_exists(previous_theme_file(root))?;
 
@@ -650,6 +746,17 @@ pub fn diagnose(root: impl AsRef<Path>, themes_directory: impl AsRef<Path>) -> V
         ok: !journal_file(root).exists(),
     });
 
+    for status in desktop_integrations::status() {
+        diagnostics.push(Diagnostic {
+            label: format!("Integration {}", status.id),
+            detail: match &status.detected {
+                Some(path) => format!("available ({})", path.display()),
+                None => format!("not installed (looked for {})", status.programs.join(", ")),
+            },
+            ok: true,
+        });
+    }
+
     let modifications = detect_modifications(root);
 
     if modifications.is_empty() {
@@ -718,7 +825,17 @@ mod tests {
         let report = apply_theme(&dir, &theme("cyberpunk")).unwrap();
 
         assert_eq!(report.theme_id, "cyberpunk");
-        assert_eq!(report.installed_files, vec!["waybar.css"]);
+        assert!(report.installed_files.contains(&"waybar.css".to_string()));
+        assert!(
+            report
+                .installed_files
+                .contains(&"rofi/theme.rasi".to_string())
+        );
+        assert!(
+            report
+                .installed_files
+                .contains(&"hyprland/my-linux.conf".to_string())
+        );
         assert_eq!(report.created_backups.len(), 1);
 
         assert_eq!(
@@ -726,9 +843,35 @@ mod tests {
             "original"
         );
         assert_eq!(crate::read_active_theme(&dir).as_deref(), Some("cyberpunk"));
-        assert_eq!(installed_entries(&dir).len(), 1);
+        assert_eq!(
+            installed_entries(&dir).len(),
+            desktop_integrations::all().len()
+        );
         assert_eq!(read_history(&dir).len(), 1);
         assert!(!journal_file(&dir).exists());
+
+        // Every integration wrote its file.
+        for integration in desktop_integrations::all() {
+            assert!(
+                destination(&dir, integration.relative_path()).is_file(),
+                "{} should be installed",
+                integration.id()
+            );
+        }
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn applies_only_the_selected_integrations() {
+        let dir = test_dir("apply-selected");
+        let selected = desktop_integrations::select(&["rofi".to_string()]).unwrap();
+
+        let report = apply_theme_with(&dir, &theme("nature"), &selected).unwrap();
+
+        assert_eq!(report.installed_files, vec!["rofi/theme.rasi"]);
+        assert!(destination(&dir, "rofi/theme.rasi").is_file());
+        assert!(!destination(&dir, WAYBAR_RELATIVE_PATH).exists());
 
         fs::remove_dir_all(dir).unwrap();
     }
@@ -764,7 +907,7 @@ mod tests {
 
         let result = rollback_theme(&dir);
 
-        assert!(matches!(result, Err(ApplyError::Config(_))));
+        assert!(matches!(result, Err(ApplyError::Validation(_))));
 
         fs::remove_dir_all(dir).unwrap();
     }
@@ -783,9 +926,29 @@ mod tests {
             fs::read_to_string(destination(&dir, WAYBAR_RELATIVE_PATH)).unwrap(),
             "original"
         );
+        // Files that never replaced a user file are removed again.
+        assert!(!destination(&dir, "rofi/theme.rasi").exists());
         assert_eq!(crate::read_active_theme(&dir), None);
         assert!(installed_entries(&dir).is_empty());
         assert_eq!(read_history(&dir).len(), 3);
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_refuses_to_delete_a_hand_edited_generated_file() {
+        let dir = test_dir("restore-modified");
+
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+        fs::write(destination(&dir, "rofi/theme.rasi"), "/* mine */").unwrap();
+
+        let result = restore_theme(&dir);
+
+        assert!(matches!(result, Err(ApplyError::Validation(_))));
+        assert_eq!(
+            fs::read_to_string(destination(&dir, "rofi/theme.rasi")).unwrap(),
+            "/* mine */"
+        );
 
         fs::remove_dir_all(dir).unwrap();
     }
@@ -861,12 +1024,6 @@ mod tests {
         assert_eq!(detect_modifications(&dir)[0].state, FileState::Missing);
 
         fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn validates_generated_configuration() {
-        assert!(validate("waybar.css", "/* empty */").is_err());
-        assert!(validate("waybar.css", "@define-color main-bg #0C0812;").is_ok());
     }
 
     #[test]
