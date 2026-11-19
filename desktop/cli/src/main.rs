@@ -4,8 +4,9 @@ use desktop_core::{
     extensions::{ExtensionFormat, ExtensionRegistry, user_extensions_dir},
     generate_palette, integrations, read_active_theme, render_theme_full, render_theme_toml,
     transaction::{
-        FileState, WAYBAR_RELATIVE_PATH, apply_theme_with_extra, destination, detect_modifications,
-        diagnose, format_timestamp, installed_entries, original_backup, read_history,
+        FileState, WAYBAR_RELATIVE_PATH, apply_theme_with_extra, apply_theme_with_extra_options,
+        backup_records, destination, detect_modifications, diagnose, format_timestamp,
+        installed_entries, original_backup, prune_backups, read_history,
         refresh_lock_screen_config, restore_theme, rollback_theme,
     },
     validate_id,
@@ -45,14 +46,17 @@ Theme commands:
   create <id> [--from <theme> | --base <#RRGGBB>]
                            Create a user theme
   duplicate <from> <to>    Copy a theme, including tokens and overrides
+  bump <id> <major|minor|patch>
+                           Raise a theme's version and write the user copy
   import <path> [--as <id>]
                            Import a theme directory or .toml file
   export <theme> [file]    Export a theme as a portable .toml file
   remove <id>              Remove a user theme
 
 Desktop commands:
-  apply <theme> [--integration <id>]... [--reload]
-                           Apply a theme as a single transaction
+  apply <theme> [--integration <id>]... [--reload] [--force]
+                           Apply a theme as a single transaction; --force
+                           replaces generated files you edited
   restore                  Restore the original configuration
   rollback                 Undo the most recent apply
   status                   Show the active theme and installation state
@@ -140,7 +144,10 @@ State commands:
   logs [--limit <n>]       Show the structured event log
 
 Recovery commands:
-  backup list              List configuration backups
+  backup list              List configuration backups and verify their digests
+  backup prune [--keep <days>] [--dry-run]
+                           Remove previous snapshots older than 30 days
+                           (original backups are always kept)
   history                  Show the installation history
   doctor                   Diagnose the installation
 
@@ -398,6 +405,58 @@ fn command_create(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn bump_version(version: &str, part: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let numbers: Vec<u64> = version
+        .split('.')
+        .map(|number| number.parse::<u64>())
+        .collect::<Result<_, _>>()
+        .map_err(|_| format!("Invalid theme version `{version}`: expected MAJOR.MINOR.PATCH"))?;
+
+    if numbers.len() != 3 {
+        return Err(
+            format!("Invalid theme version `{version}`: expected MAJOR.MINOR.PATCH").into(),
+        );
+    }
+
+    let (major, minor, patch) = match part {
+        "major" => (numbers[0] + 1, 0, 0),
+        "minor" => (numbers[0], numbers[1] + 1, 0),
+        "patch" => (numbers[0], numbers[1], numbers[2] + 1),
+        other => {
+            return Err(
+                format!("Unknown version part `{other}`: use major, minor or patch").into(),
+            );
+        }
+    };
+
+    Ok(format!("{major}.{minor}.{patch}"))
+}
+
+fn command_bump(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let id = rest
+        .first()
+        .ok_or("Usage: my-linux-theme bump <id> <major|minor|patch>")?;
+    let part = rest
+        .get(1)
+        .ok_or("Usage: my-linux-theme bump <id> <major|minor|patch>")?;
+
+    let mut theme = registry().load(id)?;
+    let next = bump_version(&theme.metadata.version, part)?;
+
+    theme.metadata.version = next.clone();
+
+    let path = theme_path(id);
+
+    install_content(render_theme_toml(&theme).as_bytes(), &path)?;
+
+    println!("Theme version updated.");
+    println!("Id:      {}", theme.metadata.id);
+    println!("Version: {next}");
+    println!("File:    {}", path.display());
+
+    Ok(())
+}
+
 fn command_duplicate(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let from = rest
         .first()
@@ -637,6 +696,10 @@ fn command_extensions(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::e
 
             if !metadata.programs.is_empty() {
                 println!("  programs:    {}", metadata.programs.join(", "));
+            }
+
+            if !metadata.permissions.is_empty() {
+                println!("  permissions: {}", metadata.permissions.join(", "));
             }
 
             for command in &metadata.reload {
@@ -983,12 +1046,13 @@ fn command_repository(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::e
 }
 
 fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let name = rest
-        .first()
-        .ok_or("Usage: my-linux-theme apply <theme> [--integration <id>]... [--reload]")?;
+    let name = rest.first().ok_or(
+        "Usage: my-linux-theme apply <theme> [--integration <id>]... [--reload] [--force]",
+    )?;
 
     let mut selected_ids: Vec<String> = Vec::new();
     let mut reload = false;
+    let mut force = false;
     let mut index = 1;
 
     while index < rest.len() {
@@ -1003,6 +1067,10 @@ fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error:
             }
             "--reload" => {
                 reload = true;
+                index += 1;
+            }
+            "--force" => {
+                force = true;
                 index += 1;
             }
             other => return Err(format!("Unknown option: {other}").into()),
@@ -1020,7 +1088,7 @@ fn command_apply(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::error:
         .iter()
         .any(|integration| destination(root, integration.relative_path()).exists());
 
-    let report = apply_theme_with_extra(root, &theme, &selected, &extra)?;
+    let report = apply_theme_with_extra_options(root, &theme, &selected, &extra, force)?;
 
     println!("Theme applied successfully.");
     println!("Theme:     {} ({})", theme.metadata.name, report.theme_id);
@@ -1273,15 +1341,9 @@ fn command_backup_list(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let mut entries: Vec<PathBuf> = fs::read_dir(&directory)?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
-        .collect();
+    let records = backup_records(root);
 
-    entries.sort();
-
-    if entries.is_empty() {
+    if records.is_empty() {
         println!("No backups found in {}.", directory.display());
 
         return Ok(());
@@ -1289,33 +1351,66 @@ fn command_backup_list(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Backups in {}:", directory.display());
 
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let size = fs::metadata(&entry)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
-        let digest = desktop_core::config_manager::digest_file(&entry)
-            .unwrap_or_else(|_| "unreadable".to_string());
-
-        let written = fs::metadata(&entry)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs())
-            .unwrap_or(0);
+    for record in records {
+        let integrity = if !record.has_metadata {
+            "legacy (no metadata)"
+        } else if record.valid {
+            "verified"
+        } else {
+            "CORRUPT"
+        };
 
         println!(
-            "  {:<28} {:>6} bytes  {}  digest {}",
-            name,
-            size,
-            format_timestamp(written),
-            digest
+            "  {:<32} {:>6} bytes  {}  theme {:<12} {:<20} digest {}",
+            format!("{}.{}", record.relative_path, record.kind),
+            record.size,
+            format_timestamp(record.created),
+            record.theme,
+            integrity,
+            record.digest
         );
     }
+
+    Ok(())
+}
+
+fn command_backup_prune(
+    root: &Path,
+    keep_days: u64,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if dry_run {
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0)
+            .saturating_sub(keep_days.saturating_mul(86_400));
+        let records: Vec<_> = backup_records(root)
+            .into_iter()
+            .filter(|record| record.kind == "previous" && record.created <= cutoff)
+            .collect();
+
+        for record in records {
+            println!("Would remove: {}", record.path.display());
+        }
+
+        println!(
+            "Dry run: no snapshots older than {keep_days} day(s) were removed; original backups are always kept."
+        );
+
+        return Ok(());
+    }
+
+    let removed = prune_backups(root, keep_days)?;
+
+    for path in &removed {
+        println!("Removed: {}", path.display());
+    }
+
+    println!(
+        "Pruned {} previous snapshot(s) older than {keep_days} day(s); original backups are kept.",
+        removed.len()
+    );
 
     Ok(())
 }
@@ -2178,6 +2273,14 @@ fn print_profile(profile: &Profile) {
             profile.metadata.integrations.join(", ")
         }
     );
+    println!(
+        "  dependencies: {}",
+        if profile.metadata.dependencies.is_empty() {
+            "none".to_string()
+        } else {
+            profile.metadata.dependencies.join(", ")
+        }
+    );
     println!();
     println!("Assets:");
     println!(
@@ -2363,6 +2466,13 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
                         .filter(|integration| !integration.is_empty())
                         .collect();
                 }
+                "dependencies" => {
+                    profile.metadata.dependencies = value
+                        .split(',')
+                        .map(|dependency| dependency.trim().to_string())
+                        .filter(|dependency| !dependency.is_empty())
+                        .collect();
+                }
                 "font" => {
                     profile.assets.font = if value.trim().is_empty() {
                         None
@@ -2423,7 +2533,7 @@ fn command_profile(root: &Path, rest: &[String]) -> Result<(), Box<dyn std::erro
                 }
                 other => {
                     return Err(format!(
-                        "Unknown profile field `{other}`. Fields: theme, wallpaper, integrations, font, font-size, icon-theme, cursor-theme, cursor-size, gaps-in, gaps-out, border-size, rounding, active-opacity, inactive-opacity, blur"
+                        "Unknown profile field `{other}`. Fields: theme, wallpaper, integrations, dependencies, font, font-size, icon-theme, cursor-theme, cursor-size, gaps-in, gaps-out, border-size, rounding, active-opacity, inactive-opacity, blur"
                     )
                     .into());
                 }
@@ -2813,6 +2923,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         "create" => command_create(rest)?,
 
+        "bump" => command_bump(rest)?,
+
         "duplicate" => command_duplicate(rest)?,
 
         "import" => command_import(rest)?,
@@ -2879,11 +2991,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "backup" => {
             let subcommand = rest.first().map(String::as_str).unwrap_or("list");
 
-            if subcommand != "list" {
-                return Err(format!("Unknown backup command: {subcommand}\n\n{HELP}").into());
-            }
+            match subcommand {
+                "list" => command_backup_list(&root)?,
+                "prune" => {
+                    let mut keep_days = 30;
+                    let mut dry_run = false;
+                    let mut index = 1;
 
-            command_backup_list(&root)?;
+                    while index < rest.len() {
+                        match rest[index].as_str() {
+                            "--keep" => {
+                                keep_days = rest
+                                    .get(index + 1)
+                                    .ok_or("--keep requires a number of days")?
+                                    .parse()
+                                    .map_err(|_| "--keep requires a number of days")?;
+                                index += 2;
+                            }
+                            "--dry-run" => {
+                                dry_run = true;
+                                index += 1;
+                            }
+                            other => {
+                                return Err(format!("Unknown backup prune option: {other}").into());
+                            }
+                        }
+                    }
+
+                    command_backup_prune(&root, keep_days, dry_run)?;
+                }
+                _ => {
+                    return Err(format!("Unknown backup command: {subcommand}\n\n{HELP}").into());
+                }
+            }
         }
 
         "history" => command_history(&root),

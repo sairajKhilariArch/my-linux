@@ -540,6 +540,7 @@ impl ExtensionRegistry {
             programs: Vec::new(),
             template: template_name.clone(),
             reload: Vec::new(),
+            permissions: Vec::new(),
         };
         let extension = Extension {
             metadata,

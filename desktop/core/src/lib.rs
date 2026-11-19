@@ -11,10 +11,10 @@ pub use desktop_integrations as integrations;
 pub use desktop_integrations::{Integration, IntegrationStatus};
 pub use desktop_profiles as profiles;
 pub use theme_engine::{
-    BrokenTheme, Color, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError,
-    ThemeLocation, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource, ThemeSummary,
-    ThemeTypography, generate_palette, render_from_parts, render_theme_full, render_theme_parts,
-    render_theme_toml, validate_id,
+    BrokenTheme, Color, Discovery, LoadedTheme, ModuleOverride, Registry, ThemeColors,
+    ThemeLoadError, ThemeLocation, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource,
+    ThemeSummary, ThemeTypography, generate_palette, render_from_parts, render_theme_full,
+    render_theme_parts, render_theme_toml, validate_id,
 };
 
 pub mod log;

@@ -5,6 +5,77 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-11-19
+
+### Added
+
+- Backup metadata sidecars in `backups/.meta/`: every original and previous
+  backup records its timestamp, source theme, content digest, byte size and
+  permissions. `backup list` now walks nested backup paths and reports the
+  theme, age and verification state (`verified`, `legacy`, `CORRUPT`).
+- Backup integrity verification: `restore` checks the original backup against
+  its recorded digest before writing. A corrupted backup aborts the restore and
+  leaves the installed configuration untouched. `doctor` reports corrupt and
+  legacy backups.
+- `backup prune [--keep <days>] [--dry-run]` removes `.previous` snapshots older
+  than 30 days by default. Original backups are never pruned.
+- Apply conflict handling: applying no longer overwrites generated files that
+  were edited by hand. It stops with the conflicting paths and the CLI/GUI offer
+  `--force` (or the “replace generated files I edited” checkbox) to snapshot and
+  replace them deliberately.
+- Waybar module overrides: `[overrides.waybar.modules.<module>]` sets
+  `background`, `foreground` and `border` for individual Waybar modules. The
+  renderer appends one CSS rule per module and the schema validates module names
+  and colours.
+- Notification per-application rules: `[overrides.dunst.modules.<app>]` and
+  `[overrides.mako.modules.<app>]` generate app-specific Dunst sections and Mako
+  `[app-name=...]` blocks with background, text and border colours.
+- Firefox integration (`firefox/userChrome.css`): tabs, navigation bar, URL bar
+  and toolbar are themed, with documented instructions for enabling
+  `toolkit.legacyUserProfileCustomizations.stylesheets`.
+- Profile dependencies: profiles accept an optional `dependencies` list. The
+  CLI normalises and validates it, `profile set <id> dependencies ...` edits it,
+  `profile info` shows it and profile application warns about missing programs
+  on `PATH`.
+- GUI profile editing: the profile manager has an edit form for name, theme,
+  wallpaper, integrations and dependencies, plus a “Style” shortcut from the
+  application manager to the per-integration editor.
+- GUI wallpaper image preview decoded with the `image` crate, and a rendered
+  desktop mock preview in the theme editor using the draft palette.
+- Extension permissions: manifests declare `permissions = ["reload"]` before
+  reload commands are accepted. Unknown permissions are rejected, `extensions
+  info` displays them and the built-in SwayNC extension declares `reload`.
+- `bump <id> <major|minor|patch>` raises a theme version, writes the user copy
+  through the same validated export path and reports the new version.
+
+### Changed
+
+- Theme/module overrides now round-trip through `render_theme_toml`, so export,
+  duplicate and version bumps keep module styling.
+- The integration list grows to sixteen and the GUI/README counts follow.
+- Workspace version 0.27.0; `PKGBUILD` `pkgver` follows it.
+
+### Tests
+
+- Theme engine: module overrides parse, inherit, export and reject invalid names
+  and colours.
+- Integrations: Waybar, Dunst and Mako emit per-module/per-app rules; Firefox
+  renders and validates its browser stylesheet.
+- Core: backup metadata and corruption detection, conflict refusal and forced
+  replacement, retention pruning that keeps originals, and doctor backup health.
+- Extensions: reload commands require the `reload` permission, unknown
+  permissions are rejected and permissions survive manifest serialisation.
+- Profiles and GUI: dependency normalisation and the sixteen-integration count.
+
+### Limitations
+
+- GUI changes were compiled and state-tested but not opened in a display session.
+- Firefox, notification daemons, Waybar and Hyprland reloads were not executed in
+  this environment.
+- AUR publication, hosted marketplace listings and release artifacts remain
+  external publishing steps; a code-level third-party integration plugin API is
+  not included.
+
 ## [0.26.0] - 2026-11-19
 
 ### Added

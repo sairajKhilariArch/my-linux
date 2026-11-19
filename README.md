@@ -21,19 +21,21 @@ modifies your live `~/.config`. See [`docs/to-do.md`](docs/to-do.md) and
 | Theme discovery, validation, schema versioning, inheritance | Implemented |
 | Typography and geometry tokens (font, size, radius, spacing, border, opacity) | Implemented |
 | Theme creation, import, export, removal, palette generation | Implemented |
+| Theme version bumping and write-back of edited themes | Implemented |
 | Waybar, Rofi, Wofi, Hyprland, Kitty, Dunst, Mako, Hyprlock rendering | Implemented |
-| GTK 3/4, Qt, Zsh, Neovim, Yazi, Btop rendering | Implemented |
+| GTK 3/4, Qt, Firefox, Zsh, Neovim, Yazi, Btop rendering | Implemented |
 | Generated-output validation per application | Implemented |
 | Application detection and per-application reload commands | Implemented |
 | Multi-file transactional apply with backup and rollback | Implemented |
-| First-run original backup, retained forever | Implemented |
+| Backup metadata, integrity verification and retention pruning | Implemented |
 | `restore`, `rollback`, journal recovery | Implemented |
 | Modification detection and refusal to delete hand-edited files | Implemented |
+| Apply refuses to overwrite edited generated files unless `--force` is used | Implemented |
 | `status`, `current`, `history`, `backup list`, `doctor`, `integrations status` | Implemented |
 | Structured event log, failure records, last-action reporting | Implemented |
 | Extension and repository health in `doctor` and the GUI | Implemented |
 | Path validation, permission preservation, symlink-safe writes | Implemented |
-| Browser styling | Not implemented (no stable format) |
+| Firefox browser chrome styling through `userChrome.css` | Implemented |
 | Wallpaper library, preview, switching, history and restore | Implemented |
 | Palette extraction from a PNG/JPEG wallpaper | Implemented |
 | Font, icon-theme and cursor-theme discovery and settings | Implemented |
@@ -176,6 +178,7 @@ it no process is touched.
 | `gtk3` | GTK 3 | `gtk-3.0/my-linux.css` | applied on next start |
 | `gtk4` | GTK 4 | `gtk-4.0/my-linux.css` | applied on next start |
 | `qt` | Qt (qt6ct/qt5ct) | `qt6ct/colors/my-linux.conf` | applied on next start |
+| `firefox` | Firefox profile (`userChrome.css`) | `firefox/userChrome.css` | Firefox restart |
 | `zsh` | Zsh prompt | `zsh/my-linux.zsh` | new shell |
 | `neovim` | Neovim | `nvim/lua/my-linux.lua` | applied on next start |
 | `yazi` | Yazi file manager | `yazi/theme.toml` | applied on next start |
@@ -245,7 +248,12 @@ Every operation is appended to `state/events.jsonl` as one JSON object per line:
 Failures are recorded with `"level":"error"` (for example `apply-failed` or
 `profile-failed`), so a failed command can always be reconstructed later.
 `logs` prints the tail of that file, `history` shows the installation history
-and `backup list` shows every backup with its size, write time and digest.
+and `backup list` shows every backup with its size, write time, source theme and
+digest, and marks sidecars whose content no longer matches as `CORRUPT`.
+Original backups keep their metadata in `backups/.meta/`. The command
+`backup prune [--keep <days>] [--dry-run]` removes old `.previous` snapshots
+while originals are kept forever. `restore` verifies the original backup digest
+before it writes anything.
 
 `integrations status` reports, for every integration, whether the application is
 detected and what happened to its generated file (unmodified, modified, missing
@@ -296,6 +304,7 @@ description = "Neon developer desktop."
 theme = "cyberpunk"
 wallpaper = "/home/me/Wallpapers/neon.png"   # optional; path or library name
 integrations = ["waybar", "rofi", "hyprland", "kitty"]  # empty = everything
+dependencies = ["hyprland", "swww", "kitty"]           # optional, checked on apply
 
 [assets]
 font = "JetBrainsMono Nerd Font"
@@ -386,6 +395,17 @@ shadow_opacity = 40     # percent
 [overrides.waybar]
 font_size = 10
 radius = 4
+
+# A single Waybar module can be coloured on its own.
+[overrides.waybar.modules.clock]
+background = "#451B48"
+foreground = "#FFF0FA"
+border = "#FF235A"
+
+# Dunst and Mako turn these tables into application-specific rules.
+[overrides.dunst.modules.slack]
+background = "#30152F"
+foreground = "#FFF0FA"
 ```
 
 Every integration asks for `typography_for(id)` and `metrics_for(id)`, so an
@@ -394,7 +414,9 @@ field by field, are range-validated (`font_size` 6–48, `radius` ≤ 32,
 `spacing` ≤ 48, `border_width` ≤ 8, `opacity` 20–100, `shadow_range` ≤ 40,
 `shadow_opacity` ≤ 100) and survive export and
 `duplicate`. `info <theme>` lists them, and the GUI theme editor edits them per
-integration alongside border width and opacity.
+integration alongside border width and opacity. `overrides.<id>.modules.<name>`
+adds per-module (Waybar) and per-application notification (Dunst, Mako) rules;
+the generated CSS/configuration appends one rule per module.
 
 Validation rules:
 
@@ -427,8 +449,12 @@ format = "css"                 # toml | css | rasi | ini | text
 destination = "my-widget/style.css"
 template = "template.css"
 programs = ["my-widget-daemon"]
+permissions = ["reload"]        # required when reload commands are declared
 reload = [["my-widget-daemon", "--reload"]]
 ```
+
+Reload commands need explicit consent in the manifest: an extension without the
+`reload` permission cannot declare one, and unknown permissions are rejected.
 
 A theme may also declare design tokens used by every renderer:
 
@@ -503,6 +529,7 @@ through the extension registry, and an existing installation needs `--force`.
 ├── hyprlock/hyprlock.conf
 ├── backups/<file>.original            # first original configuration, never overwritten
 ├── backups/<file>.previous            # state before the last operation (rollback)
+├── backups/.meta/                     # timestamp, theme, digest and size sidecars
 └── state/
     ├── active-theme
     ├── installed.tsv                  # installed files and their digests
@@ -542,7 +569,7 @@ desktop/
 ├── core/            # registry wiring, transactions, rollback, history, diagnostics
 ├── theme-engine/    # discovery, schema validation, inheritance, generation
 ├── config-manager/  # atomic install, backups, restore, digests
-├── integrations/    # one renderer per application (thirteen integrations)
+├── integrations/    # one renderer per application (sixteen integrations)
 ├── assets/          # wallpaper library, palette extraction, fonts/icons/cursors
 ├── profiles/        # profile schema, registry and profile application
 ├── extensions/      # extension manifest, template rendering and registry

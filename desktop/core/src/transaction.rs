@@ -34,6 +34,8 @@ pub enum ApplyError {
     Config(ConfigError),
     Io(io::Error),
     Validation(String),
+    /// Generated files the user changed; applying needs `--force`.
+    Conflict(Vec<String>),
     RollbackIncomplete(String),
 }
 
@@ -43,6 +45,11 @@ impl std::fmt::Display for ApplyError {
             ApplyError::Config(error) => write!(f, "{error}"),
             ApplyError::Io(error) => write!(f, "I/O error: {error}"),
             ApplyError::Validation(error) => write!(f, "{error}"),
+            ApplyError::Conflict(files) => write!(
+                f,
+                "These generated files were modified by you: {}. Re-apply with `--force` to replace them, or restore them first.",
+                files.join(", ")
+            ),
             ApplyError::RollbackIncomplete(error) => write!(
                 f,
                 "The operation failed and the rollback did not complete: {error}. Run `my-linux-theme doctor`."
@@ -206,6 +213,222 @@ pub fn previous_backup(root: impl AsRef<Path>, relative_path: &str) -> PathBuf {
     root.as_ref()
         .join("backups")
         .join(format!("{relative_path}.previous"))
+}
+
+/// Sidecar metadata for one backup, so listings can show when and from which
+/// theme a backup was written and restores can verify its integrity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackupRecord {
+    pub path: PathBuf,
+    pub relative_path: String,
+    /// `original` or `previous`.
+    pub kind: String,
+    pub created: u64,
+    pub theme: String,
+    pub digest: String,
+    pub size: u64,
+    pub mode: Option<u32>,
+    /// False for backups written before metadata existed.
+    pub has_metadata: bool,
+    /// Digest matches the recorded digest.
+    pub valid: bool,
+}
+
+fn metadata_directory(root: &Path) -> PathBuf {
+    root.join("backups").join(".meta")
+}
+
+fn metadata_key(relative_path: &str, kind: &str) -> String {
+    format!("{}.{}.toml", relative_path.replace('/', "__"), kind)
+}
+
+fn metadata_file(root: &Path, relative_path: &str, kind: &str) -> PathBuf {
+    metadata_directory(root).join(metadata_key(relative_path, kind))
+}
+
+fn sidecar_value<'a>(contents: &'a str, key: &str) -> Option<&'a str> {
+    contents.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+
+        if name.trim() != key {
+            return None;
+        }
+
+        Some(value.trim().trim_matches('"'))
+    })
+}
+
+fn file_mode(path: &Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::metadata(path)
+            .ok()
+            .map(|metadata| metadata.permissions().mode() & 0o777)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+
+        None
+    }
+}
+
+fn modified_timestamp(path: &Path) -> u64 {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn write_backup_metadata(
+    root: &Path,
+    relative_path: &str,
+    kind: &str,
+    backup: &Path,
+    theme: &str,
+) -> Result<(), ApplyError> {
+    let contents = fs::read(backup)?;
+    let record = format!(
+        "schema = 1\npath = \"{}\"\nkind = \"{kind}\"\ncreated = {}\ntheme = \"{}\"\ndigest = \"{}\"\nsize = {}\nmode = \"{}\"\n",
+        relative_path.replace('"', ""),
+        timestamp(),
+        theme.replace('"', ""),
+        digest(&contents),
+        contents.len(),
+        file_mode(backup).unwrap_or(0o644)
+    );
+
+    install_content(record.as_bytes(), metadata_file(root, relative_path, kind))?;
+
+    Ok(())
+}
+
+/// Builds a record for one backup, using its sidecar when present.
+fn backup_record(root: &Path, relative_path: &str, kind: &str) -> Result<BackupRecord, ApplyError> {
+    let path = if kind == "original" {
+        original_backup(root, relative_path)
+    } else {
+        previous_backup(root, relative_path)
+    };
+    let contents = fs::read(&path)?;
+    let actual_digest = digest(&contents);
+    let sidecar = fs::read_to_string(metadata_file(root, relative_path, kind)).ok();
+
+    let (created, theme, recorded_digest, has_metadata) = match sidecar {
+        Some(contents) => (
+            sidecar_value(&contents, "created")
+                .and_then(|value| value.parse().ok())
+                .unwrap_or_else(|| modified_timestamp(&path)),
+            sidecar_value(&contents, "theme")
+                .unwrap_or("unknown")
+                .to_string(),
+            sidecar_value(&contents, "digest")
+                .unwrap_or(&actual_digest)
+                .to_string(),
+            true,
+        ),
+        None => (
+            modified_timestamp(&path),
+            "unknown".to_string(),
+            actual_digest.clone(),
+            false,
+        ),
+    };
+
+    Ok(BackupRecord {
+        path: path.clone(),
+        relative_path: relative_path.to_string(),
+        kind: kind.to_string(),
+        created,
+        theme,
+        digest: recorded_digest.clone(),
+        size: contents.len() as u64,
+        mode: file_mode(&path),
+        has_metadata,
+        valid: recorded_digest == actual_digest,
+    })
+}
+
+/// Every backup in the installation root, including nested relative paths.
+pub fn backup_records(root: impl AsRef<Path>) -> Vec<BackupRecord> {
+    let root = root.as_ref();
+    let directory = root.join("backups");
+    let mut records = Vec::new();
+    let mut pending = vec![directory];
+
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            if path.is_dir() {
+                if name != ".meta" {
+                    pending.push(path);
+                }
+
+                continue;
+            }
+
+            let Ok(relative) = path.strip_prefix(root.join("backups")) else {
+                continue;
+            };
+            let relative = relative.to_string_lossy();
+            let Some((relative_path, kind)) = relative
+                .strip_suffix(".original")
+                .map(|path| (path, "original"))
+                .or_else(|| {
+                    relative
+                        .strip_suffix(".previous")
+                        .map(|path| (path, "previous"))
+                })
+            else {
+                continue;
+            };
+
+            if let Ok(record) = backup_record(root, relative_path, kind) {
+                records.push(record);
+            }
+        }
+    }
+
+    records.sort_by(|left, right| {
+        left.relative_path
+            .cmp(&right.relative_path)
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+
+    records
+}
+
+/// Removes `previous` snapshots older than `keep_days`.
+///
+/// Original backups are never pruned: they are the only copy of a user's
+/// configuration from before My Linux touched it.
+pub fn prune_backups(root: impl AsRef<Path>, keep_days: u64) -> Result<Vec<PathBuf>, ApplyError> {
+    let root = root.as_ref();
+    let cutoff = timestamp().saturating_sub(keep_days.saturating_mul(86_400));
+    let mut removed = Vec::new();
+
+    for record in backup_records(root) {
+        if record.kind != "previous" || record.created > cutoff {
+            continue;
+        }
+
+        remove_file_if_exists(&record.path)?;
+        let _ = remove_file_if_exists(metadata_file(root, &record.relative_path, &record.kind));
+        removed.push(record.path);
+    }
+
+    Ok(removed)
 }
 
 fn state_file(root: &Path, name: &str) -> PathBuf {
@@ -385,7 +608,11 @@ pub fn recover_interrupted(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyE
     Ok(restored)
 }
 
-fn run_transaction(root: &Path, prepared: &[Prepared]) -> Result<Vec<String>, ApplyError> {
+fn run_transaction(
+    root: &Path,
+    prepared: &[Prepared],
+    theme: &str,
+) -> Result<Vec<String>, ApplyError> {
     let entries: Vec<(String, bool)> = prepared
         .iter()
         .map(|file| {
@@ -415,10 +642,13 @@ fn run_transaction(root: &Path, prepared: &[Prepared]) -> Result<Vec<String>, Ap
             if target.exists() {
                 if !original.exists() && !ours.contains(&file.relative_path) {
                     backup_file(&target, &original)?;
+                    write_backup_metadata(root, &file.relative_path, "original", &original, theme)?;
                     created_backups.push(original.display().to_string());
                 }
 
-                snapshot_file(&target, previous_backup(root, &file.relative_path))?;
+                let previous = previous_backup(root, &file.relative_path);
+                snapshot_file(&target, &previous)?;
+                write_backup_metadata(root, &file.relative_path, "previous", &previous, theme)?;
             }
 
             match &file.content {
@@ -653,9 +883,21 @@ pub fn apply_theme_with_extra(
     selected: &[&'static dyn Integration],
     extra: &[(String, String)],
 ) -> Result<ApplyReport, ApplyError> {
+    apply_theme_with_extra_options(root, theme, selected, extra, false)
+}
+
+/// Applies a theme plus additional files, optionally replacing generated files
+/// the user edited.
+pub fn apply_theme_with_extra_options(
+    root: impl AsRef<Path>,
+    theme: &LoadedTheme,
+    selected: &[&'static dyn Integration],
+    extra: &[(String, String)],
+    force: bool,
+) -> Result<ApplyReport, ApplyError> {
     let root = root.as_ref();
 
-    match apply_transaction(root, theme, selected, extra) {
+    match apply_transaction(root, theme, selected, extra, force) {
         Ok(report) => {
             let _ = append_event(
                 root,
@@ -689,14 +931,35 @@ fn apply_transaction(
     theme: &LoadedTheme,
     selected: &[&'static dyn Integration],
     extra: &[(String, String)],
+    force: bool,
 ) -> Result<ApplyReport, ApplyError> {
     fs::create_dir_all(root)?;
     recover_interrupted(root)?;
 
     let prepared = prepare(root, theme, selected, extra)?;
+
+    if !force {
+        let generated: Vec<String> = prepared
+            .iter()
+            .map(|file| file.relative_path.clone())
+            .collect();
+        let modified: Vec<String> = detect_modifications(root)
+            .into_iter()
+            .filter(|modification| {
+                modification.state == FileState::Modified
+                    && generated.contains(&modification.relative_path)
+            })
+            .map(|modification| modification.relative_path)
+            .collect();
+
+        if !modified.is_empty() {
+            return Err(ApplyError::Conflict(modified));
+        }
+    }
+
     let previous_theme = crate::read_active_theme(root);
 
-    let created_backups = run_transaction(root, &prepared)?;
+    let created_backups = run_transaction(root, &prepared, &theme.metadata.id)?;
 
     write_installed(root, &prepared)?;
 
@@ -739,6 +1002,16 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
         let original = original_backup(root, relative_path);
 
         if original.exists() {
+            let record = backup_record(root, relative_path, "original")?;
+
+            if !record.valid {
+                return Err(ApplyError::Validation(format!(
+                    "backup {} is corrupted: expected digest {}, found a different file",
+                    original.display(),
+                    record.digest
+                )));
+            }
+
             prepared.push(Prepared {
                 relative_path: relative_path.clone(),
                 content: Some(fs::read(&original)?),
@@ -763,7 +1036,7 @@ pub fn restore_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError> 
         ));
     }
 
-    run_transaction(root, &prepared)?;
+    run_transaction(root, &prepared, "restore")?;
 
     remove_file_if_exists(installed_file(root))?;
     crate::clear_active_theme(root)?;
@@ -826,7 +1099,7 @@ pub fn rollback_theme(root: impl AsRef<Path>) -> Result<Vec<String>, ApplyError>
         ));
     }
 
-    run_transaction(root, &prepared)?;
+    run_transaction(root, &prepared, "rollback")?;
 
     let previous_theme = fs::read_to_string(previous_theme_file(root))
         .ok()
@@ -920,6 +1193,33 @@ pub fn diagnose(
         },
         ok: !journal_file(root).exists(),
     });
+
+    let backups = backup_records(root);
+    let corrupt: Vec<&BackupRecord> = backups.iter().filter(|record| !record.valid).collect();
+    let legacy = backups.iter().filter(|record| !record.has_metadata).count();
+
+    diagnostics.push(Diagnostic {
+        label: "Configuration backups".to_string(),
+        detail: format!(
+            "{} backup(s), {} verified, {} legacy without metadata, {} corrupt",
+            backups.len(),
+            backups
+                .iter()
+                .filter(|record| record.has_metadata && record.valid)
+                .count(),
+            legacy,
+            corrupt.len()
+        ),
+        ok: corrupt.is_empty(),
+    });
+
+    for record in corrupt {
+        diagnostics.push(Diagnostic {
+            label: format!("Backup {}", record.path.display()),
+            detail: format!("digest mismatch; expected {}", record.digest),
+            ok: false,
+        });
+    }
 
     for status in desktop_integrations::status() {
         diagnostics.push(Diagnostic {
@@ -1347,6 +1647,105 @@ mod tests {
         let failures: Vec<&Diagnostic> = diagnostics.iter().filter(|item| !item.ok).collect();
 
         assert!(failures.is_empty(), "unexpected problems: {failures:?}");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn backup_records_carry_metadata_and_detect_corruption() {
+        let dir = test_dir("backup-meta");
+        fs::write(destination(&dir, WAYBAR_RELATIVE_PATH), "original").unwrap();
+
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+
+        let records = backup_records(&dir);
+        let original = records
+            .iter()
+            .find(|record| {
+                record.kind == "original" && record.relative_path == WAYBAR_RELATIVE_PATH
+            })
+            .expect("original backup should be recorded");
+
+        assert!(original.has_metadata);
+        assert!(original.valid);
+        assert_eq!(original.theme, "cyberpunk");
+        assert_eq!(original.size, "original".len() as u64);
+
+        fs::write(original.path.clone(), "corrupted").unwrap();
+
+        let records = backup_records(&dir);
+        let original = records
+            .iter()
+            .find(|record| record.kind == "original")
+            .unwrap();
+
+        assert!(!original.valid);
+
+        let error = restore_theme(&dir).expect_err("a corrupted backup must not be restored");
+
+        assert!(error.to_string().contains("corrupted"));
+        assert!(destination(&dir, WAYBAR_RELATIVE_PATH).is_file());
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn apply_refuses_modified_generated_files_unless_forced() {
+        let dir = test_dir("apply-conflict");
+
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+
+        let file = destination(&dir, WAYBAR_RELATIVE_PATH);
+        fs::write(&file, "/* hand edited */").unwrap();
+
+        let error = apply_theme(&dir, &theme("nature"))
+            .expect_err("a modified generated file must stop the apply");
+
+        assert!(matches!(error, ApplyError::Conflict(_)));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "/* hand edited */");
+
+        apply_theme_with_extra_options(
+            &dir,
+            &theme("nature"),
+            desktop_integrations::all(),
+            &[],
+            true,
+        )
+        .expect("force replaces the edited file");
+
+        assert_eq!(crate::read_active_theme(&dir).as_deref(), Some("nature"));
+        assert_ne!(fs::read_to_string(&file).unwrap(), "/* hand edited */");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn prunes_previous_snapshots_but_keeps_originals() {
+        let dir = test_dir("backup-prune");
+        fs::write(destination(&dir, WAYBAR_RELATIVE_PATH), "original").unwrap();
+
+        apply_theme(&dir, &theme("cyberpunk")).unwrap();
+
+        let sidecar = metadata_file(&dir, WAYBAR_RELATIVE_PATH, "previous");
+        let contents = fs::read_to_string(&sidecar)
+            .unwrap()
+            .lines()
+            .map(|line| {
+                if line.starts_with("created = ") {
+                    "created = 0".to_string()
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        fs::write(&sidecar, contents).unwrap();
+
+        let removed = prune_backups(&dir, 30).unwrap();
+
+        assert_eq!(removed.len(), 1);
+        assert!(!previous_backup(&dir, WAYBAR_RELATIVE_PATH).exists());
+        assert!(original_backup(&dir, WAYBAR_RELATIVE_PATH).exists());
 
         fs::remove_dir_all(dir).unwrap();
     }

@@ -514,6 +514,49 @@ fn backup_list_shows_the_original_backup() {
 }
 
 #[test]
+fn bump_raises_a_theme_version() {
+    let root = TempRoot::new("theme-bump");
+    let user_themes = root.join("user-themes");
+
+    let created = run_with_user_themes(
+        root.path(),
+        &["create", "bumped", "--from", "cyberpunk"],
+        &user_themes,
+    );
+    assert!(created.status.success(), "{}", stderr(&created));
+
+    let output = run_with_user_themes(root.path(), &["bump", "bumped", "minor"], &user_themes);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains("0.2.0"));
+
+    let info = run_with_user_themes(root.path(), &["info", "bumped"], &user_themes);
+    assert!(stdout(&info).contains("0.2.0"));
+}
+
+#[test]
+fn apply_refuses_edits_unless_forced() {
+    let root = TempRoot::new("apply-force");
+    root.write("waybar.css", ORIGINAL);
+
+    assert!(run(root.path(), &["apply", "cyberpunk"]).status.success());
+
+    let file = root.path().join("waybar.css");
+    std::fs::write(&file, "/* hand edited */").unwrap();
+
+    let refused = run(root.path(), &["apply", "nature"]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("modified by you"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "/* hand edited */");
+
+    let forced = run(root.path(), &["apply", "nature", "--force"]);
+    assert!(forced.status.success(), "{}", stderr(&forced));
+    assert_ne!(std::fs::read_to_string(&file).unwrap(), "/* hand edited */");
+
+    let backups = run(root.path(), &["backup", "list"]);
+    assert!(stdout(&backups).contains("theme nature"));
+}
+
+#[test]
 fn doctor_reports_a_healthy_installation() {
     let root = TempRoot::new("doctor");
     root.write("waybar.css", ORIGINAL);

@@ -93,18 +93,63 @@ pub fn render(theme: &LoadedTheme) -> String {
     ));
     output.push_str("anchor=top-right\n");
 
+    if let Some(apps) = theme.module_overrides("mako") {
+        for (app, style) in apps {
+            output.push_str(&format!("\n[app-name={app}]\n"));
+
+            if let Some(color) = style.background {
+                output.push_str(&format!("background-color={}\n", hex(color)));
+            }
+
+            if let Some(color) = style.foreground {
+                output.push_str(&format!("text-color={}\n", hex(color)));
+            }
+
+            if let Some(color) = style.border {
+                output.push_str(&format!("border-color={}\n", hex(color)));
+            }
+        }
+    }
+
     output
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use theme_engine::Registry;
+    use theme_engine::{Color, ModuleOverride, Registry, ThemeOverride};
 
     fn theme() -> LoadedTheme {
         Registry::new(vec!["../../themes".into()])
             .load("cyberpunk")
             .expect("cyberpunk should load")
+    }
+
+    #[test]
+    fn renders_per_application_rules() {
+        let mut theme = theme();
+        theme.overrides.insert(
+            "mako".to_string(),
+            ThemeOverride {
+                modules: [(
+                    "slack".to_string(),
+                    ModuleOverride {
+                        background: Some(Color::new(0x20, 0x10, 0x30)),
+                        foreground: None,
+                        border: Some(Color::new(0x00, 0xAA, 0xFF)),
+                    },
+                )]
+                .into(),
+                ..ThemeOverride::default()
+            },
+        );
+
+        let config = render(&theme);
+
+        assert!(config.contains("[app-name=slack]"));
+        assert!(config.contains("background-color=#201030"));
+        assert!(config.contains("border-color=#00AAFF"));
+        assert_eq!(config.matches("[app-name=slack]").count(), 1);
     }
 
     #[test]

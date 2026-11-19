@@ -9,9 +9,9 @@ pub mod template;
 
 pub use generate::generate_palette;
 pub use loader::{
-    BrokenTheme, Discovery, LoadedTheme, Registry, ThemeColors, ThemeLoadError, ThemeLocation,
-    ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource, ThemeSummary, ThemeTypography,
-    load_theme, load_theme_by_id, load_theme_by_name, parse_color, validate_id,
+    BrokenTheme, Discovery, LoadedTheme, ModuleOverride, Registry, ThemeColors, ThemeLoadError,
+    ThemeLocation, ThemeMetadata, ThemeMetrics, ThemeOverride, ThemeSource, ThemeSummary,
+    ThemeTypography, load_theme, load_theme_by_id, load_theme_by_name, parse_color, validate_id,
 };
 pub use template::{
     render_from_parts, render_theme, render_theme_full, render_theme_parts, render_theme_toml,

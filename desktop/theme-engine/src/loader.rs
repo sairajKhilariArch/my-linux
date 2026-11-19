@@ -104,6 +104,49 @@ struct RawOverride {
     shadow_range: Option<u8>,
     #[serde(default)]
     shadow_opacity: Option<u8>,
+    #[serde(default)]
+    modules: BTreeMap<String, RawModuleOverride>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawModuleOverride {
+    #[serde(default)]
+    background: Option<String>,
+    #[serde(default)]
+    foreground: Option<String>,
+    #[serde(default)]
+    border: Option<String>,
+}
+
+/// Colours overridden for one module of an application (a Waybar module, a
+/// notification app rule, a browser surface).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModuleOverride {
+    pub background: Option<Color>,
+    pub foreground: Option<Color>,
+    pub border: Option<Color>,
+}
+
+impl ModuleOverride {
+    fn merge(&mut self, raw: &RawModuleOverride) -> Result<(), ThemeLoadError> {
+        if let Some(value) = &raw.background {
+            self.background = Some(parse_color(value)?);
+        }
+
+        if let Some(value) = &raw.foreground {
+            self.foreground = Some(parse_color(value)?);
+        }
+
+        if let Some(value) = &raw.border {
+            self.border = Some(parse_color(value)?);
+        }
+
+        Ok(())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.background.is_none() && self.foreground.is_none() && self.border.is_none()
+    }
 }
 
 /// Design tokens overridden for one application integration.
@@ -118,10 +161,11 @@ pub struct ThemeOverride {
     pub opacity: Option<u8>,
     pub shadow_range: Option<u8>,
     pub shadow_opacity: Option<u8>,
+    pub modules: BTreeMap<String, ModuleOverride>,
 }
 
 impl ThemeOverride {
-    fn merge(&mut self, raw: &RawOverride) {
+    fn merge(&mut self, raw: &RawOverride) -> Result<(), ThemeLoadError> {
         if let Some(family) = &raw.font_family {
             self.font_family = Some(family.trim().to_string());
         }
@@ -157,6 +201,12 @@ impl ThemeOverride {
         if let Some(opacity) = raw.shadow_opacity {
             self.shadow_opacity = Some(opacity);
         }
+
+        for (module, raw) in &raw.modules {
+            self.modules.entry(module.clone()).or_default().merge(raw)?;
+        }
+
+        Ok(())
     }
 
     fn is_empty(&self) -> bool {
@@ -169,6 +219,7 @@ impl ThemeOverride {
             && self.opacity.is_none()
             && self.shadow_range.is_none()
             && self.shadow_opacity.is_none()
+            && self.modules.is_empty()
     }
 }
 
@@ -277,6 +328,20 @@ impl LoadedTheme {
                 .unwrap_or_else(|| base.mono_family.clone()),
             font_size: over.font_size.unwrap_or(base.font_size),
         }
+    }
+
+    /// Module-level colours for `integration`, when the theme declares any.
+    pub fn module_overrides(&self, integration: &str) -> Option<&BTreeMap<String, ModuleOverride>> {
+        self.overrides
+            .get(integration)
+            .map(|over| &over.modules)
+            .filter(|modules| !modules.is_empty())
+    }
+
+    /// Colours for one module of `integration`.
+    pub fn module_override(&self, integration: &str, module: &str) -> Option<&ModuleOverride> {
+        self.module_overrides(integration)
+            .and_then(|modules| modules.get(module))
     }
 
     /// Metrics for `integration`, honouring `[overrides.<id>]`.
@@ -651,7 +716,7 @@ impl Registry {
 
                 let entry = overrides.entry(integration.clone()).or_default();
 
-                entry.merge(raw);
+                entry.merge(raw)?;
 
                 if entry.is_empty() {
                     overrides.remove(integration);
@@ -854,6 +919,25 @@ fn validate_override(integration: &str, over: &ThemeOverride) -> Result<(), Them
         return Err(ThemeLoadError::InvalidMetadata(format!(
             "overrides.{integration}.mono_family must not be empty"
         )));
+    }
+
+    for (module, style) in &over.modules {
+        let valid = !module.is_empty()
+            && module.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '-' || character == '_'
+            });
+
+        if !valid {
+            return Err(ThemeLoadError::InvalidMetadata(format!(
+                "invalid module `{module}` in overrides.{integration}: use letters, digits, '-' or '_'"
+            )));
+        }
+
+        if style.is_empty() {
+            return Err(ThemeLoadError::InvalidMetadata(format!(
+                "overrides.{integration}.modules.{module} must set background, foreground or border"
+            )));
+        }
     }
 
     Ok(())
@@ -1072,6 +1156,69 @@ active = "#FF0000"
 hover = "#00FF00"
 selected = "#222222"
 "##;
+
+    #[test]
+    fn loads_and_exports_waybar_module_overrides() {
+        let root = scratch("modules");
+        let contents = format!(
+            "{BASE_THEME}\n[overrides.waybar.modules.workspaces]\nbackground = \"#101010\"\nforeground = \"#EEEEEE\"\n\n\
+             [overrides.waybar.modules.clock]\nborder = \"#FF00FF\"\n"
+        );
+
+        write_theme(&root, "base", &contents);
+
+        let theme = Registry::new(vec![root.clone()]).load("base").unwrap();
+        let modules = theme.module_overrides("waybar").unwrap();
+
+        assert_eq!(modules.len(), 2);
+        assert_eq!(
+            modules["workspaces"].background.unwrap().to_hex(),
+            "#101010"
+        );
+        assert_eq!(
+            modules["workspaces"].foreground.unwrap().to_hex(),
+            "#EEEEEE"
+        );
+        assert_eq!(modules["clock"].border.unwrap().to_hex(), "#FF00FF");
+        assert!(modules["clock"].background.is_none());
+
+        let exported = crate::template::render_theme_toml(&theme);
+
+        assert!(exported.contains("[overrides.waybar.modules.workspaces]"));
+        assert!(exported.contains("[overrides.waybar.modules.clock]"));
+
+        write_theme(&root, "base", &exported);
+
+        let reloaded = Registry::new(vec![root]).load("base").unwrap();
+
+        assert_eq!(reloaded.overrides, theme.overrides);
+    }
+
+    #[test]
+    fn rejects_invalid_module_names_and_colours() {
+        let root = scratch("modules-invalid");
+        let contents = format!(
+            "{BASE_THEME}\n[overrides.waybar.modules.\"bad module\"]\nbackground = \"#101010\"\n"
+        );
+
+        write_theme(&root, "base", &contents);
+
+        let error = Registry::new(vec![root.clone()])
+            .load("base")
+            .expect_err("module names must be CSS safe");
+
+        assert!(error.to_string().contains("module"));
+
+        write_theme(
+            &root,
+            "base",
+            &format!(
+                "{BASE_THEME}\n[overrides.waybar.modules.clock]\nbackground = \"not-a-colour\"\n"
+            ),
+        );
+
+        assert!(Registry::new(vec![root]).load("base").is_err());
+    }
 
     #[test]
     fn loads_shadow_metrics_and_per_application_shadows() {

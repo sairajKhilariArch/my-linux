@@ -12,6 +12,7 @@ use theme_engine::LoadedTheme;
 
 pub mod btop;
 pub mod dunst;
+pub mod firefox;
 pub mod gtk3;
 pub mod gtk4;
 pub mod hyprland;
@@ -98,6 +99,7 @@ static INTEGRATIONS: &[&dyn Integration] = &[
     &gtk3::Gtk3,
     &gtk4::Gtk4,
     &qt::Qt,
+    &firefox::Firefox,
     &zsh::Zsh,
     &neovim::Neovim,
     &yazi::Yazi,

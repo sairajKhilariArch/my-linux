@@ -16,7 +16,7 @@ use desktop_core::log::{Event, read_events};
 use desktop_core::profile_apply::{ProfileApplyOptions, apply_profile_with_extensions};
 use desktop_core::profiles::{Profile, ProfileRegistry};
 use desktop_core::transaction::{
-    Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with_extra,
+    Diagnostic, FileState, HistoryEntry, Modification, apply_theme_with_extra_options,
     detect_modifications, diagnose, read_history, recover_interrupted, refresh_lock_screen_config,
     restore_theme, rollback_theme,
 };
@@ -374,7 +374,12 @@ impl GuiState {
     }
 
     /// Applies a theme. An empty `selected` list means every integration.
-    pub fn apply_theme(&mut self, id: &str, selected: &[&'static str]) -> Result<String, String> {
+    pub fn apply_theme(
+        &mut self,
+        id: &str,
+        selected: &[&'static str],
+        force: bool,
+    ) -> Result<String, String> {
         let theme = self.theme(id)?;
         let ids: Vec<String> = selected.iter().map(|id| id.to_string()).collect();
         let chosen = integrations::select(&ids)?;
@@ -386,7 +391,7 @@ impl GuiState {
             .iter()
             .map(|extension| (extension.destination.clone(), extension.content.clone()))
             .collect();
-        let report = apply_theme_with_extra(&self.root, &theme, &chosen, &extra)
+        let report = apply_theme_with_extra_options(&self.root, &theme, &chosen, &extra, force)
             .map_err(|error| error.to_string())?;
 
         self.refresh();
@@ -796,6 +801,55 @@ impl GuiState {
         Ok(format!("Created profile {name} ({id})."))
     }
 
+    /// Updates the metadata a user can edit from the profile manager.
+    pub fn update_profile(
+        &mut self,
+        id: &str,
+        name: &str,
+        theme: &str,
+        wallpaper: &str,
+        integrations: &str,
+        dependencies: &str,
+    ) -> Result<String, String> {
+        if self.registry().find(theme).is_none() {
+            return Err(format!("Unknown theme `{theme}`"));
+        }
+
+        let mut profile = self.profiles.load(id).map_err(|error| error.to_string())?;
+
+        profile.metadata.name = name.trim().to_string();
+        profile.metadata.theme = theme.trim().to_lowercase();
+        profile.metadata.wallpaper =
+            Some(wallpaper.trim().to_string()).filter(|value| !value.is_empty());
+        profile.metadata.integrations = integrations
+            .split(',')
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        profile.metadata.dependencies = dependencies
+            .split(',')
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+
+        profile.normalize();
+        profile.validate().map_err(|error| error.to_string())?;
+
+        let file = self
+            .profiles
+            .save(&profile)
+            .map_err(|error| error.to_string())?;
+
+        self.refresh();
+
+        Ok(format!(
+            "Updated profile {} ({}) at {}.",
+            profile.metadata.name,
+            profile.metadata.id,
+            file.display()
+        ))
+    }
+
     /// Imports a profile TOML file into the user profile directory.
     pub fn import_profile(&mut self, source: &Path) -> Result<String, String> {
         let contents = fs::read_to_string(source).map_err(|error| error.to_string())?;
@@ -953,7 +1007,7 @@ mod tests {
 
         assert_eq!(state.themes.len(), 4);
         assert!(state.themes.iter().any(|theme| theme.id == "cyberpunk"));
-        assert_eq!(state.integrations.len(), 15);
+        assert_eq!(state.integrations.len(), 16);
         assert!(
             state
                 .integrations
@@ -968,7 +1022,7 @@ mod tests {
     fn applies_themes_and_reports_state() {
         let mut state = state_for("apply");
 
-        state.apply_theme("cyberpunk", &["waybar"]).unwrap();
+        state.apply_theme("cyberpunk", &["waybar"], false).unwrap();
 
         assert_eq!(state.active_theme.as_deref(), Some("cyberpunk"));
         assert_eq!(state.modifications.len(), 1);
@@ -980,7 +1034,7 @@ mod tests {
                 .any(|event| event.action == "apply" && event.detail.contains("cyberpunk"))
         );
 
-        state.apply_theme("nature", &["waybar"]).unwrap();
+        state.apply_theme("nature", &["waybar"], false).unwrap();
 
         assert_eq!(state.active_theme.as_deref(), Some("nature"));
 
@@ -1157,7 +1211,7 @@ mod tests {
         assert!(state.extensions.iter().all(|row| !row.enabled));
 
         state.enable_extension("swaync").unwrap();
-        state.apply_theme("cyberpunk", &["waybar"]).unwrap();
+        state.apply_theme("cyberpunk", &["waybar"], false).unwrap();
 
         assert!(state.root.join("swaync/style.css").is_file());
         assert!(
@@ -1259,7 +1313,7 @@ mod tests {
     fn diagnostics_include_the_new_checks() {
         let mut state = state_for("diagnostics");
 
-        state.apply_theme("cyberpunk", &["waybar"]).unwrap();
+        state.apply_theme("cyberpunk", &["waybar"], false).unwrap();
 
         let diagnostics = state.diagnostics();
 

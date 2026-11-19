@@ -124,6 +124,18 @@ pub fn render_layout(layout: &ProfileLayout) -> String {
     output
 }
 
+fn program_on_path(name: &str) -> bool {
+    let path = PathBuf::from(name);
+
+    if path.is_absolute() {
+        return path.is_file();
+    }
+
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|directory| directory.join(name).is_file()))
+        .unwrap_or(false)
+}
+
 fn resolve_wallpaper(query: &str) -> Result<PathBuf, ProfileApplyError> {
     let path = PathBuf::from(query);
 
@@ -270,6 +282,15 @@ fn apply_profile_transaction(
     write_settings(root, &assets)?;
 
     let mut warnings = Vec::new();
+
+    for dependency in &profile.metadata.dependencies {
+        if !program_on_path(dependency) {
+            warnings.push(format!(
+                "dependency `{dependency}` was not found on PATH; install it for the complete profile"
+            ));
+        }
+    }
+
     let mut wallpaper_commands = Vec::new();
 
     if let Some(path) = &wallpaper

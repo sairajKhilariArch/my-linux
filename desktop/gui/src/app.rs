@@ -180,6 +180,8 @@ pub struct MyLinuxApp {
     import_path: String,
     export_path: String,
     wallpaper_palette: Option<desktop_core::assets::Proposal>,
+    wallpaper_preview_path: Option<PathBuf>,
+    wallpaper_preview_texture: Option<egui::TextureHandle>,
     palette_path: Option<PathBuf>,
     palette_id: String,
     palette_name: String,
@@ -187,6 +189,13 @@ pub struct MyLinuxApp {
     new_profile_id: String,
     new_profile_name: String,
     new_profile_theme: String,
+    edit_profile: Option<String>,
+    edit_profile_name: String,
+    edit_profile_theme: String,
+    edit_profile_wallpaper: String,
+    edit_profile_integrations: String,
+    edit_profile_dependencies: String,
+    force_apply: bool,
     repository_location: String,
     replace_packages: bool,
     asset_font: String,
@@ -226,6 +235,8 @@ impl MyLinuxApp {
             import_path: String::new(),
             export_path: String::new(),
             wallpaper_palette: None,
+            wallpaper_preview_path: None,
+            wallpaper_preview_texture: None,
             palette_path: None,
             palette_id: String::new(),
             palette_name: String::new(),
@@ -233,6 +244,13 @@ impl MyLinuxApp {
             new_profile_id: String::new(),
             new_profile_name: String::new(),
             new_profile_theme,
+            edit_profile: None,
+            edit_profile_name: String::new(),
+            edit_profile_theme: String::new(),
+            edit_profile_wallpaper: String::new(),
+            edit_profile_integrations: String::new(),
+            edit_profile_dependencies: String::new(),
+            force_apply: false,
             repository_location: std::env::var("MY_LINUX_REPOSITORY").unwrap_or_default(),
             replace_packages: false,
             asset_font: String::new(),
@@ -301,7 +319,7 @@ impl MyLinuxApp {
 
     fn apply_selected_integrations(&mut self, theme_id: &str) {
         let enabled = self.enabled.clone();
-        let result = self.state.apply_theme(theme_id, &enabled);
+        let result = self.state.apply_theme(theme_id, &enabled, self.force_apply);
 
         self.outcome(result);
     }
@@ -917,6 +935,7 @@ impl MyLinuxApp {
         ui.add_space(8.0);
         ui.label(RichText::new("Preview").strong());
         swatches(ui, &draft.colors());
+        theme_mock(ui, &draft.colors());
 
         ui.add_space(8.0);
 
@@ -998,6 +1017,8 @@ impl MyLinuxApp {
 
         ui.add_space(6.0);
 
+        let mut style: Option<&'static str> = None;
+
         egui::Grid::new("applications")
             .num_columns(4)
             .striped(true)
@@ -1038,19 +1059,42 @@ impl MyLinuxApp {
                             .color(color),
                     );
 
-                    let mut checked = self.enabled.contains(&row.id);
+                    ui.horizontal(|ui| {
+                        let mut checked = self.enabled.contains(&row.id);
 
-                    if ui.checkbox(&mut checked, "").changed() {
-                        if checked {
-                            self.enabled.push(row.id);
-                        } else {
-                            self.enabled.retain(|id| *id != row.id);
+                        if ui.checkbox(&mut checked, "").changed() {
+                            if checked {
+                                self.enabled.push(row.id);
+                            } else {
+                                self.enabled.retain(|id| *id != row.id);
+                            }
                         }
-                    }
+
+                        if ui.small_button("Style").clicked() {
+                            style = Some(row.id);
+                        }
+                    });
 
                     ui.end_row();
                 }
             });
+
+        if let Some(id) = style {
+            let theme = self
+                .state
+                .active_theme
+                .clone()
+                .or_else(|| self.selected_theme.clone())
+                .or_else(|| self.state.themes.first().map(|theme| theme.id.clone()));
+
+            if let Some(theme) = theme {
+                self.start_editor(&theme);
+
+                if let Some(draft) = self.draft.as_mut() {
+                    draft.override_target = id.to_string();
+                }
+            }
+        }
 
         ui.add_space(8.0);
 
@@ -1060,6 +1104,11 @@ impl MyLinuxApp {
             .clone()
             .or_else(|| self.selected_theme.clone())
             .or_else(|| self.state.themes.first().map(|theme| theme.id.clone()));
+
+        ui.checkbox(
+            &mut self.force_apply,
+            "Replace generated files I edited (force)",
+        );
 
         if let Some(theme) = target
             && ui
@@ -1249,6 +1298,7 @@ impl MyLinuxApp {
 
         let mut preview: Option<PathBuf> = None;
         let mut apply: Option<PathBuf> = None;
+        let mut view: Option<PathBuf> = None;
 
         if self.state.wallpapers.is_empty() {
             ui.label(
@@ -1274,6 +1324,10 @@ impl MyLinuxApp {
                         ui.label(RichText::new(format_bytes(wallpaper.bytes)).small());
 
                         ui.horizontal(|ui| {
+                            if ui.button("View").clicked() {
+                                view = Some(wallpaper.path.clone());
+                            }
+
                             if ui.button("Palette").clicked() {
                                 preview = Some(wallpaper.path.clone());
                             }
@@ -1306,6 +1360,36 @@ impl MyLinuxApp {
                     self.wallpaper_palette = Some(proposal);
                 }
                 Err(error) => self.status = Some((false, error)),
+            }
+        }
+
+        if let Some(path) = view {
+            self.wallpaper_preview_path = Some(path);
+            self.wallpaper_preview_texture = None;
+        }
+
+        if self.wallpaper_preview_texture.is_none()
+            && let Some(path) = self.wallpaper_preview_path.clone()
+        {
+            self.wallpaper_preview_texture = load_wallpaper_texture(ui.ctx(), &path);
+
+            if self.wallpaper_preview_texture.is_none() {
+                self.wallpaper_preview_path = None;
+                self.status = Some((false, format!("Could not preview {}", path.display())));
+            }
+        }
+
+        if let Some(texture) = &self.wallpaper_preview_texture {
+            ui.add_space(8.0);
+            ui.label(RichText::new("Preview").strong());
+            ui.add(
+                egui::Image::new((texture.id(), texture.size_vec2()))
+                    .max_width(420.0)
+                    .max_height(240.0),
+            );
+
+            if let Some(path) = &self.wallpaper_preview_path {
+                ui.label(RichText::new(path.display().to_string()).small().weak());
             }
         }
 
@@ -1426,6 +1510,7 @@ impl MyLinuxApp {
 
         let profiles = self.state.profiles_list.clone();
         let mut apply: Option<String> = None;
+        let mut edit: Option<String> = None;
         let mut export: Option<String> = None;
 
         egui::Grid::new("profiles")
@@ -1469,6 +1554,10 @@ impl MyLinuxApp {
                             apply = Some(profile.id.clone());
                         }
 
+                        if ui.button("Edit").clicked() {
+                            edit = Some(profile.id.clone());
+                        }
+
                         if ui.button("Export").clicked() {
                             export = Some(profile.id.clone());
                         }
@@ -1478,9 +1567,68 @@ impl MyLinuxApp {
                 }
             });
 
+        if let Some(id) = edit
+            && let Ok(profile) = self.state.profiles.load(&id)
+        {
+            self.edit_profile = Some(id);
+            self.edit_profile_name = profile.metadata.name;
+            self.edit_profile_theme = profile.metadata.theme;
+            self.edit_profile_wallpaper = profile.metadata.wallpaper.unwrap_or_default();
+            self.edit_profile_integrations = profile.metadata.integrations.join(", ");
+            self.edit_profile_dependencies = profile.metadata.dependencies.join(", ");
+        }
+
         if let Some(id) = apply {
             let result = self.state.apply_profile(&id);
             self.outcome(result);
+        }
+
+        if let Some(id) = self.edit_profile.clone() {
+            ui.add_space(10.0);
+            ui.heading(format!("Edit profile {id}"));
+
+            egui::Grid::new("edit-profile")
+                .num_columns(2)
+                .spacing([16.0, 8.0])
+                .show(ui, |ui| {
+                    ui.label("Name");
+                    ui.text_edit_singleline(&mut self.edit_profile_name);
+                    ui.end_row();
+
+                    ui.label("Theme");
+                    ui.text_edit_singleline(&mut self.edit_profile_theme);
+                    ui.end_row();
+
+                    ui.label("Wallpaper");
+                    ui.text_edit_singleline(&mut self.edit_profile_wallpaper);
+                    ui.end_row();
+
+                    ui.label("Integrations");
+                    ui.text_edit_singleline(&mut self.edit_profile_integrations);
+                    ui.end_row();
+
+                    ui.label("Dependencies");
+                    ui.text_edit_singleline(&mut self.edit_profile_dependencies);
+                    ui.end_row();
+                });
+
+            ui.horizontal(|ui| {
+                if ui.button("Save profile").clicked() {
+                    let result = self.state.update_profile(
+                        &id,
+                        &self.edit_profile_name,
+                        &self.edit_profile_theme,
+                        &self.edit_profile_wallpaper,
+                        &self.edit_profile_integrations,
+                        &self.edit_profile_dependencies,
+                    );
+                    self.outcome(result);
+                }
+
+                if ui.button("Close editor").clicked() {
+                    self.edit_profile = None;
+                }
+            });
         }
 
         if let Some(id) = export {
@@ -1846,6 +1994,77 @@ fn stat(ui: &mut Ui, label: &str, value: &str) {
     });
 
     ui.add_space(18.0);
+}
+
+/// A small mock desktop rendered with the draft theme's own colours.
+fn theme_mock(ui: &mut Ui, colors: &ThemeColors) {
+    egui::Frame::new()
+        .fill(color32(colors.background))
+        .inner_margin(egui::Margin::same(10))
+        .corner_radius(6)
+        .show(ui, |ui| {
+            ui.set_min_width(320.0);
+
+            egui::Frame::new()
+                .fill(color32(colors.surface))
+                .inner_margin(egui::Margin::same(6))
+                .corner_radius(4)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("● ● ●").color(color32(colors.primary)));
+                        ui.label(RichText::new("My Linux").color(color32(colors.text)));
+                        ui.label(RichText::new("workspace 1").color(color32(colors.text_muted)));
+                    });
+                });
+
+            ui.add_space(8.0);
+
+            egui::Frame::new()
+                .fill(color32(colors.surface_alt))
+                .inner_margin(egui::Margin::same(10))
+                .corner_radius(4)
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new("user@my-linux:~$ my-linux-theme status")
+                            .color(color32(colors.success)),
+                    );
+                    ui.label(
+                        RichText::new("Theme applied successfully.")
+                            .color(color32(colors.text_muted)),
+                    );
+                });
+
+            ui.add_space(6.0);
+
+            ui.horizontal(|ui| {
+                egui::Frame::new()
+                    .fill(color32(colors.primary))
+                    .inner_margin(egui::Margin::symmetric(8, 3))
+                    .corner_radius(3)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Apply").color(color32(colors.background)));
+                    });
+
+                egui::Frame::new()
+                    .fill(color32(colors.surface))
+                    .inner_margin(egui::Margin::symmetric(8, 3))
+                    .corner_radius(3)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Preview").color(color32(colors.text)));
+                    });
+            });
+        });
+}
+
+fn load_wallpaper_texture(ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
+    let image = image::open(path).ok()?.thumbnail(640, 360).to_rgba8();
+    let size = [image.width() as usize, image.height() as usize];
+
+    Some(ctx.load_texture(
+        "wallpaper-preview",
+        egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw()),
+        egui::TextureOptions::LINEAR,
+    ))
 }
 
 fn swatches(ui: &mut Ui, colors: &ThemeColors) {

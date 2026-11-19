@@ -81,6 +81,8 @@ pub struct ExtensionMetadata {
     pub template: String,
     /// Commands that reload the target application.
     pub reload: Vec<Vec<String>>,
+    /// Capabilities the extension declares (currently `reload`).
+    pub permissions: Vec<String>,
 }
 
 /// A loaded extension: its manifest and template.
@@ -118,6 +120,8 @@ struct RawExtension {
     template: Option<String>,
     #[serde(default)]
     reload: Vec<Vec<String>>,
+    #[serde(default)]
+    permissions: Vec<String>,
 }
 
 impl Extension {
@@ -237,6 +241,10 @@ impl Extension {
                 .collect();
 
             output.push_str(&format!("reload = [{}]\n", commands.join(", ")));
+        }
+
+        if !metadata.permissions.is_empty() {
+            output.push_str(&format!("permissions = {}\n", array(&metadata.permissions)));
         }
 
         output
@@ -440,6 +448,28 @@ fn validate_metadata(
         }
     }
 
+    let mut permissions: Vec<String> = Vec::new();
+
+    for permission in raw.permissions {
+        let permission = permission.trim().to_lowercase();
+
+        if permission != "reload" {
+            return Err(ExtensionError::Invalid(format!(
+                "unknown permission `{permission}`; supported permissions: reload"
+            )));
+        }
+
+        if !permissions.contains(&permission) {
+            permissions.push(permission);
+        }
+    }
+
+    if !raw.reload.is_empty() && !permissions.iter().any(|permission| permission == "reload") {
+        return Err(ExtensionError::Invalid(
+            "reload commands require the `reload` permission in the manifest".to_string(),
+        ));
+    }
+
     Ok(ExtensionMetadata {
         schema,
         id,
@@ -452,6 +482,7 @@ fn validate_metadata(
         programs,
         template,
         reload: raw.reload,
+        permissions,
     })
 }
 
@@ -483,6 +514,53 @@ template = "template.css"
         fs::create_dir_all(&directory).unwrap();
 
         directory
+    }
+
+    #[test]
+    fn reload_commands_require_the_reload_permission() {
+        let root = scratch("permissions");
+        let directory = root.join("demo");
+
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("template.css"),
+            ":root { color: {{colors.primary}}; }\n",
+        )
+        .unwrap();
+
+        let without = format!("{VALID}\nreload = [[\"demo-app\", \"--reload\"]]\n");
+        fs::write(directory.join("extension.toml"), &without).unwrap();
+
+        let error = Extension::from_directory(directory.clone()).expect_err("permission required");
+        assert!(error.to_string().contains("reload` permission"));
+
+        fs::write(
+            directory.join("extension.toml"),
+            format!(
+                "{VALID}\npermissions = [\"reload\"]\nreload = [[\"demo-app\", \"--reload\"]]\n"
+            ),
+        )
+        .unwrap();
+
+        let extension = Extension::from_directory(directory.clone()).unwrap();
+
+        assert_eq!(extension.metadata.permissions, vec!["reload"]);
+        assert!(extension.to_toml().contains("permissions = [\"reload\"]"));
+
+        fs::write(
+            directory.join("extension.toml"),
+            format!("{VALID}\npermissions = [\"filesystem\"]\n"),
+        )
+        .unwrap();
+
+        assert!(
+            Extension::from_directory(directory)
+                .expect_err("unknown permissions are rejected")
+                .to_string()
+                .contains("unknown permission")
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -612,10 +690,12 @@ template = "template.css"
 
         extension.metadata.programs = vec!["demo-app".to_string()];
         extension.metadata.reload = vec![vec!["demo-app".to_string(), "--reload".to_string()]];
+        extension.metadata.permissions = vec!["reload".to_string()];
 
         let rendered = extension.to_toml();
 
         assert!(rendered.contains("reload = [[\"demo-app\", \"--reload\"]]"));
+        assert!(rendered.contains("permissions = [\"reload\"]"));
 
         let reparsed = Extension::parse(&rendered, root.join("demo")).unwrap();
 

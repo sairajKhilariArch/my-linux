@@ -108,18 +108,63 @@ pub fn render(theme: &LoadedTheme) -> String {
     ));
     output.push_str("    timeout = 0\n");
 
+    if let Some(apps) = theme.module_overrides("dunst") {
+        for (app, style) in apps {
+            output.push_str(&format!("\n[{app}]\n    appname = \"{app}\"\n"));
+
+            if let Some(color) = style.background {
+                output.push_str(&format!("    background = \"{}\"\n", color.to_hex()));
+            }
+
+            if let Some(color) = style.foreground {
+                output.push_str(&format!("    foreground = \"{}\"\n", color.to_hex()));
+            }
+
+            if let Some(color) = style.border {
+                output.push_str(&format!("    frame_color = \"{}\"\n", color.to_hex()));
+            }
+        }
+    }
+
     output
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use theme_engine::Registry;
+    use theme_engine::{Color, ModuleOverride, Registry, ThemeOverride};
 
     fn theme() -> LoadedTheme {
         Registry::new(vec!["../../themes".into()])
             .load("cyberpunk")
             .expect("cyberpunk should load")
+    }
+
+    #[test]
+    fn renders_per_application_rules() {
+        let mut theme = theme();
+        theme.overrides.insert(
+            "dunst".to_string(),
+            ThemeOverride {
+                modules: [(
+                    "slack".to_string(),
+                    ModuleOverride {
+                        background: Some(Color::new(0x20, 0x10, 0x30)),
+                        foreground: Some(Color::new(0xFF, 0xFF, 0xFF)),
+                        border: Some(Color::new(0xFF, 0x00, 0x00)),
+                    },
+                )]
+                .into(),
+                ..ThemeOverride::default()
+            },
+        );
+
+        let config = render(&theme);
+
+        assert!(config.contains("[slack]"));
+        assert!(config.contains("appname = \"slack\""));
+        assert!(config.contains("background = \"#201030\""));
+        assert!(config.contains("frame_color = \"#FF0000\""));
     }
 
     #[test]

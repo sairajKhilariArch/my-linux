@@ -72,6 +72,9 @@ pub struct ProfileMetadata {
     /// Integration ids to install; empty means every integration.
     #[serde(default)]
     pub integrations: Vec<String>,
+    /// Programs or packages the profile expects on the system.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 impl Default for ProfileMetadata {
@@ -86,6 +89,7 @@ impl Default for ProfileMetadata {
             theme: String::new(),
             wallpaper: None,
             integrations: Vec::new(),
+            dependencies: Vec::new(),
         }
     }
 }
@@ -177,6 +181,7 @@ impl Profile {
                 theme: theme.to_string(),
                 wallpaper: None,
                 integrations: Vec::new(),
+                dependencies: Vec::new(),
             },
             assets: ProfileAssets::default(),
             layout: ProfileLayout::default(),
@@ -257,6 +262,19 @@ impl Profile {
 
         self.metadata.integrations = integrations;
 
+        let mut dependencies: Vec<String> = self
+            .metadata
+            .dependencies
+            .iter()
+            .map(|dependency| dependency.trim().to_string())
+            .filter(|dependency| !dependency.is_empty())
+            .collect();
+
+        dependencies.sort();
+        dependencies.dedup();
+
+        self.metadata.dependencies = dependencies;
+
         self.assets.font = normalize_option(self.assets.font.take());
         self.assets.icon_theme = normalize_option(self.assets.icon_theme.take());
         self.assets.cursor_theme = normalize_option(self.assets.cursor_theme.take());
@@ -301,6 +319,20 @@ impl Profile {
         for integration in &self.metadata.integrations {
             if desktop_integrations::find(integration).is_none() {
                 return Err(ProfileError::UnknownIntegration(integration.clone()));
+            }
+        }
+
+        for dependency in &self.metadata.dependencies {
+            let valid = !dependency.is_empty()
+                && dependency.chars().all(|character| {
+                    character.is_ascii_alphanumeric()
+                        || matches!(character, '-' | '_' | '.' | '+' | '@')
+                });
+
+            if !valid {
+                return Err(ProfileError::Invalid(format!(
+                    "invalid dependency `{dependency}`: use a program or package name"
+                )));
             }
         }
 
@@ -370,6 +402,7 @@ description = "A profile"
 theme = "cyberpunk"
 wallpaper = "/wallpapers/neon.png"
 integrations = ["waybar", "kitty", "waybar"]
+dependencies = ["swww", "hyprland", "swww"]
 
 [assets]
 font = "JetBrainsMono Nerd Font"
@@ -397,6 +430,10 @@ blur = false
         assert_eq!(
             profile.metadata.integrations,
             vec!["kitty".to_string(), "waybar".to_string()]
+        );
+        assert_eq!(
+            profile.metadata.dependencies,
+            vec!["hyprland".to_string(), "swww".to_string()]
         );
         assert_eq!(profile.assets.font_size, 12);
         assert_eq!(profile.assets.cursor_size, 28);

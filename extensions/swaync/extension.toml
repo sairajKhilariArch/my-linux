@@ -17,4 +17,5 @@ destination = "swaync/style.css"
 template = "template.css"
 programs = ["swaync"]
 
+permissions = ["reload"]
 reload = [["swaync-client", "--reload-css"]]

@@ -104,6 +104,22 @@ pub fn render_theme_full(
         if let Some(opacity) = over.shadow_opacity {
             output.push_str(&format!("shadow_opacity = {opacity}\n"));
         }
+
+        for (module, style) in &over.modules {
+            output.push_str(&format!("\n[overrides.{integration}.modules.{module}]\n"));
+
+            if let Some(color) = style.background {
+                output.push_str(&format!("background = \"{}\"\n", color.to_hex()));
+            }
+
+            if let Some(color) = style.foreground {
+                output.push_str(&format!("foreground = \"{}\"\n", color.to_hex()));
+            }
+
+            if let Some(color) = style.border {
+                output.push_str(&format!("border = \"{}\"\n", color.to_hex()));
+            }
+        }
     }
 
     output
