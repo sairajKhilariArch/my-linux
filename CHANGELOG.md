@@ -5,6 +5,34 @@ All notable changes to My Linux are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-19
+
+### Added
+
+- `create <id>` builds a user theme, either from another theme
+  (`--from <theme>`) or from a seed colour (`--base '#RRGGBB'`), and writes it
+  to the user theme directory.
+- `import <path> [--as <id>]` imports a theme directory or a single `.toml`
+  file, validating it before anything is written.
+- `remove <id>` deletes a user theme. It refuses built-in themes and only
+  deletes inside the user theme directory.
+- `MY_LINUX_USER_THEMES` selects the user theme directory (default
+  `$XDG_DATA_HOME/my-linux/themes`), and user themes take precedence over
+  built-in themes.
+- `list` shows the id, name, version and source of every discovered theme, plus
+  every invalid theme file with its error.
+- `info` reports schema, author, inheritance parent and the theme path.
+
+### Changed
+- `export` now writes a portable theme `.toml` file that `import` accepts,
+  instead of duplicating the CSS that `render` already prints.
+- Applying, previewing, rendering and inspecting accept any discovered theme
+  id, including user themes and inherited themes.
+- CLI tests cover user theme creation, generation from a colour, import and
+  removal, inheritance of built-in colours and rejection of invalid ids.
+- Phase 3 of the roadmap is marked complete and the README documents the theme
+  schema, inheritance and both theme layouts.
+
 ## [0.7.0] - 2026-11-19
 
 ### Added

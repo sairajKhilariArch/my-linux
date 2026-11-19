@@ -56,6 +56,17 @@ fn run(root: &Path, args: &[&str]) -> Output {
         .expect("the CLI binary should start")
 }
 
+/// Runs the CLI with an isolated user theme directory.
+fn run_with_user_themes(root: &Path, args: &[&str], user_themes: &Path) -> Output {
+    Command::new(BIN)
+        .arg("--root")
+        .arg(root)
+        .args(args)
+        .env("MY_LINUX_USER_THEMES", user_themes)
+        .output()
+        .expect("the CLI binary should start")
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -214,9 +225,9 @@ fn status_reports_the_active_theme_and_installation_state() {
 }
 
 #[test]
-fn export_writes_css_to_the_requested_file() {
+fn export_writes_a_portable_theme_file() {
     let root = TempRoot::new("export");
-    let target = root.join("css/cyberpunk.css");
+    let target = root.join("themes/cyberpunk.toml");
 
     let output = run(
         root.path(),
@@ -224,7 +235,140 @@ fn export_writes_css_to_the_requested_file() {
     );
 
     assert!(output.status.success(), "{}", stderr(&output));
-    assert!(fs::read_to_string(&target).unwrap().contains("#0C0812"));
+
+    let exported = fs::read_to_string(&target).unwrap();
+
+    assert!(exported.contains("[theme]"));
+    assert!(exported.contains("primary = \"#FF235A\""));
+    assert!(exported.contains("[colors.states]"));
+}
+
+#[test]
+fn creates_a_user_theme_and_applies_it() {
+    let root = TempRoot::new("create");
+    let user_themes = root.join("user-themes");
+
+    let created = run_with_user_themes(
+        root.path(),
+        &["create", "my-theme", "--from", "cyberpunk"],
+        &user_themes,
+    );
+
+    assert!(created.status.success(), "{}", stderr(&created));
+    assert!(user_themes.join("my-theme/colors/palette.toml").is_file());
+
+    let listed = run_with_user_themes(root.path(), &["list"], &user_themes);
+    let out = stdout(&listed);
+
+    assert!(out.contains("my-theme"));
+    assert!(out.contains("(user)"));
+
+    let applied = run_with_user_themes(root.path(), &["apply", "my-theme"], &user_themes);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+
+    assert!(root.read("waybar.css").contains("#FF235A"));
+    assert_eq!(root.read("state/active-theme").trim(), "my-theme");
+}
+
+#[test]
+fn creates_a_theme_from_a_base_colour() {
+    let root = TempRoot::new("create-base");
+    let user_themes = root.join("user-themes");
+
+    let created = run_with_user_themes(
+        root.path(),
+        &["create", "forest", "--base", "#6EBE5A"],
+        &user_themes,
+    );
+
+    assert!(created.status.success(), "{}", stderr(&created));
+
+    let info = run_with_user_themes(root.path(), &["info", "forest"], &user_themes);
+    assert!(info.status.success(), "{}", stderr(&info));
+    assert!(stdout(&info).contains("primary"));
+
+    let applied = run_with_user_themes(root.path(), &["apply", "forest"], &user_themes);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+    assert!(root.read("waybar.css").contains("@define-color main-bg"));
+}
+
+#[test]
+fn imports_a_theme_and_removes_it_again() {
+    let root = TempRoot::new("import");
+    let user_themes = root.join("user-themes");
+    let exported = root.join("shared.toml");
+
+    let export = run(
+        root.path(),
+        &["export", "nature", exported.to_str().unwrap()],
+    );
+    assert!(export.status.success(), "{}", stderr(&export));
+
+    let import = run_with_user_themes(
+        root.path(),
+        &["import", exported.to_str().unwrap(), "--as", "forest"],
+        &user_themes,
+    );
+
+    assert!(import.status.success(), "{}", stderr(&import));
+
+    let applied = run_with_user_themes(root.path(), &["apply", "forest"], &user_themes);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+    assert!(root.read("waybar.css").contains("#6EBE5A"));
+
+    let removed = run_with_user_themes(root.path(), &["remove", "forest"], &user_themes);
+    assert!(removed.status.success(), "{}", stderr(&removed));
+
+    let missing = run_with_user_themes(root.path(), &["apply", "forest"], &user_themes);
+    assert!(!missing.status.success());
+    assert!(stderr(&missing).contains("Unknown theme"));
+}
+
+#[test]
+fn user_theme_inherits_builtin_colours() {
+    let root = TempRoot::new("inherit");
+    let user_themes = root.join("user-themes");
+    let directory = user_themes.join("neon/colors");
+
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(
+        directory.join("palette.toml"),
+        "[theme]\nname = \"Neon\"\nid = \"neon\"\nversion = \"1.0.0\"\n\
+         description = \"Inherits cyberpunk\"\nextends = \"cyberpunk\"\n\n\
+         [colors]\nprimary = \"#39FF88\"\n",
+    )
+    .unwrap();
+
+    let applied = run_with_user_themes(root.path(), &["apply", "neon"], &user_themes);
+    assert!(applied.status.success(), "{}", stderr(&applied));
+
+    let installed = root.read("waybar.css");
+
+    // Inherited background from Cyberpunk, overridden primary from Neon.
+    assert!(installed.contains("#0C0812"));
+    assert!(installed.contains("#39FF88"));
+}
+
+#[test]
+fn builtin_themes_cannot_be_removed() {
+    let root = TempRoot::new("remove-builtin");
+    let user_themes = root.join("user-themes");
+
+    let output = run_with_user_themes(root.path(), &["remove", "cyberpunk"], &user_themes);
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("Built-in themes cannot be removed"));
+}
+
+#[test]
+fn invalid_theme_ids_are_rejected() {
+    let root = TempRoot::new("invalid-id");
+    let user_themes = root.join("user-themes");
+
+    let output = run_with_user_themes(root.path(), &["create", "My Theme!"], &user_themes);
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("invalid theme id"));
 }
 
 #[test]

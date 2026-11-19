@@ -833,8 +833,6 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 
 ## Phase 2 — Production-ready configuration management
 
-**Current phase: Complete**
-
 - [x] Define configuration destination mapping.
 - [x] Design backup naming and retention.
 - [x] Preserve file permissions.
@@ -851,16 +849,20 @@ The roadmap is ordered by dependencies. We should not start the GUI or package d
 
 ## Phase 3 — Complete theme engine
 
-- [ ] Dynamic theme discovery.
-- [ ] Theme schema versioning.
-- [ ] Theme metadata validation.
-- [ ] User theme directory.
-- [ ] Custom theme creation.
-- [ ] Import and export.
-- [ ] Theme removal.
-- [ ] Theme inheritance.
-- [ ] Palette generation.
-- [ ] Theme profiles integration.
+**Current phase: Complete**
+
+- [x] Dynamic theme discovery.
+- [x] Theme schema versioning.
+- [x] Theme metadata validation.
+- [x] User theme directory.
+- [x] Custom theme creation.
+- [x] Import and export.
+- [x] Theme removal.
+- [x] Theme inheritance.
+- [x] Palette generation.
+- [ ] Theme profiles integration (belongs to Phase 7 profiles).
+
+**Status:** Complete (v0.8.0), except profile integration which is delivered with Phase 7.
 
 **Acceptance:** New themes can be added and managed without changing the Rust source code.
 
